@@ -748,12 +748,13 @@ export class Renderer3D implements IRenderer {
   private onTargetClick(target: ParticipantId): void {
     if (!this.aiming || !this.playerTurn || this.firing) return;
     this.onInteract();
-    // Keep the gun raised and turn it toward the chosen target through the shot.
+    // Map the visual target to the correct engine participant.
+    const engineTarget = this.mapTarget(target);
     this.aimTarget = target;
     this.firing = true;
     this.gunDropAt = this.now() + 1500;
     this.updateMarkers();
-    this.onAction({ kind: "SHOOT", target });
+    this.onAction({ kind: "SHOOT", target: engineTarget });
   }
 
   private onSpinClick(): void {
@@ -1419,6 +1420,28 @@ export class Renderer3D implements IRenderer {
   /** Set which participant the local player controls (for multiplayer). */
   setLocalParticipant(p: "PLAYER" | "AI"): void {
     this.localParticipant = p;
+    // If we're player2 ("AI"), flip the camera to the other side of the table.
+    if (p === "AI" && this.camera) {
+      // Mirror the base camera to the dealer's side.
+      CAM_FP.pos.z = -CAM_FP.pos.z;
+      CAM_FP.look.z = -CAM_FP.look.z;
+    }
+  }
+
+  /**
+   * Map a click-target to the correct engine ParticipantId based on who we are.
+   * "Shoot the figure across the table" = shoot opponent.
+   * "Shoot self ring" = shoot yourself.
+   */
+  private mapTarget(clickTarget: "PLAYER" | "AI"): "PLAYER" | "AI" {
+    if (this.localParticipant === "PLAYER") {
+      // Normal: clicking dealer ring = shoot AI, clicking self ring = shoot PLAYER.
+      return clickTarget === "AI" ? "AI" : "PLAYER";
+    } else {
+      // Flipped: we ARE "AI", so clicking the figure across = shoot PLAYER (opponent).
+      // Clicking self = shoot AI (us).
+      return clickTarget === "AI" ? "PLAYER" : "AI";
+    }
   }
 
   /** Play the intro zoom-out from the table on page load. */
