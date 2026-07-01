@@ -26,11 +26,16 @@ export interface MultiplayerControllerOptions {
   playerId: string;
   /**
    * Fired once when an opponent is found, BEFORE the intro board is revealed.
-   * `youFirst` already accounts for this client's perspective so the caller can
-   * run the coin-flip cinematic. Call {@link MultiplayerGameController.beginMatch}
-   * when the cinematic finishes to reveal the board.
+   * `youFirst` is the placeholder turn order; the real order is decided by the
+   * coin pick. `coinResult` is the shared landing face (both clients agree).
+   * Call {@link MultiplayerGameController.beginMatch} when the cinematic
+   * finishes to reveal the board.
    */
-  onMatched: (info: { youAre: "player1" | "player2"; youFirst: boolean }) => void;
+  onMatched: (info: {
+    youAre: "player1" | "player2";
+    youFirst: boolean;
+    coinResult: boolean;
+  }) => void;
   /** Fired once when the match ends; `youWon` reflects this client. */
   onMatchOver: (youWon: boolean) => void;
   /** Fired each second with the active turn's remaining time. */
@@ -59,7 +64,7 @@ export class MultiplayerGameController implements PresentationController {
         this.initialEvents = data.initialEvents;
         this.state = data.initialState;
         const youFirst = data.firstTurn === data.youAre;
-        opts.onMatched({ youAre: data.youAre, youFirst });
+        opts.onMatched({ youAre: data.youAre, youFirst, coinResult: data.coinResult });
       },
 
       onStateChange: (state) => {
@@ -81,6 +86,16 @@ export class MultiplayerGameController implements PresentationController {
   /** Join the queue and start matchmaking. */
   joinQueue(betAmount: number): Promise<void> {
     return this.client.joinQueue(betAmount);
+  }
+
+  /** Submit this client's heads/tails call (first-come-first-serve). */
+  submitCoinPick(pick: boolean): Promise<{ myPick: boolean; coinResult: boolean; youFirst: boolean }> {
+    return this.client.submitCoinPick(pick);
+  }
+
+  /** Poll whether the opponent already claimed a side (returns our forced side). */
+  pollCoinLock(): Promise<boolean | null> {
+    return this.client.pollCoinLock();
   }
 
   /**

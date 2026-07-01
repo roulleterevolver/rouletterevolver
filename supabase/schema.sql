@@ -79,3 +79,17 @@ CREATE POLICY "Match read participants" ON matches FOR SELECT
 -- ---------------------------------------------------------------------------
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS event_seq BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS last_events JSONB NOT NULL DEFAULT '[]';
+
+-- ---------------------------------------------------------------------------
+-- Server-authoritative coin flip (heads/tails).
+--
+-- `coin_result` is fixed when the match is created, so BOTH clients animate the
+-- coin landing on the SAME face. The heads/tails PICK is first-come-first-serve:
+-- the first player to choose claims that side (atomic "WHERE coin_pick_by IS
+-- NULL"), and the other player is forced to the opposite side. `first_turn` is
+-- then derived from whichever picked side matches `coin_result`.
+-- (true = HEADS, false = TAILS.)
+-- ---------------------------------------------------------------------------
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS coin_result BOOLEAN;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS coin_pick BOOLEAN;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS coin_pick_by UUID;

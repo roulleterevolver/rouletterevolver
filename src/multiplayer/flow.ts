@@ -44,7 +44,7 @@ export function startMultiplayerFlow(deps: MultiplayerFlowDeps): {
   const controller = new MultiplayerGameController({
     playerId,
 
-    onMatched: async ({ youAre, youFirst }) => {
+    onMatched: async ({ youAre, coinResult }) => {
       if (cancelled) return;
 
       // Second player controls the "AI" seat: mirror camera + swap targets.
@@ -54,18 +54,26 @@ export function startMultiplayerFlow(deps: MultiplayerFlowDeps): {
       await wait(2000);
       if (cancelled) return;
 
-      // Server-authoritative coin flip: `youFirst` is derived from the SAME
-      // `first_turn` value on both clients, so the outcome matches for both.
-      await renderer.playCoinFlip(
-        youFirst,
+      // Server-authoritative coin: both clients animate the SAME landing face
+      // (`coinResult`), and the heads/tails pick is first-come-first-serve.
+      const serverYouFirst = await renderer.playCoinFlip(
+        coinResult,
         () => audio.playCoinFlipShimmer(),
         () => audio.playCoinFlipTable(),
+        {
+          submitPick: (pick) => controller.submitCoinPick(pick).then((r) => ({
+            myPick: r.myPick,
+            youFirst: r.youFirst,
+          })),
+          pollLock: () => controller.pollCoinLock(),
+        },
       );
       if (cancelled) return;
+      const goesFirst = serverYouFirst;
 
       caption.enqueue(
-        youFirst ? "YOU GO FIRST" : "THEY GO FIRST",
-        youFirst ? "The coin chose you." : "The coin chose them.",
+        goesFirst ? "YOU GO FIRST" : "THEY GO FIRST",
+        goesFirst ? "The coin chose you." : "The coin chose them.",
       );
       await wait(2500);
       if (cancelled) return;

@@ -76,6 +76,10 @@ serve(async (req: Request) => {
 
     // Found an opponent — create the match!
     const coinFlip = Math.random() < 0.5 ? "player1" : "player2";
+    // The coin's landing face is fixed now so BOTH clients animate the same
+    // result. Who actually goes first is decided later by the players' picks
+    // (see the coin-pick function); `first_turn` here is only a placeholder.
+    const coinResult = Math.random() < 0.5; // true = HEADS
 
     // Generate the initial game state using the real engine.
     const rng = new SystemRng();
@@ -97,6 +101,7 @@ serve(async (req: Request) => {
         first_turn: coinFlip,
         turn_deadline: deadline,
         status: "active",
+        coin_result: coinResult,
         // Store the match-creation events (ROUND_SET_LOADED) as seq 1 so both
         // clients replay the same "X LIVE / Y BLANK" intro after the coin flip.
         event_seq: 1,

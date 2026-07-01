@@ -24,6 +24,7 @@ export interface MultiplayerConfig {
     matchId: string;
     youAre: "player1" | "player2";
     firstTurn: "player1" | "player2";
+    coinResult: boolean;
     initialState: GameState;
     initialEvents: GameEvent[];
   }) => void;
@@ -146,6 +147,45 @@ export class MultiplayerClient {
     this.clearQueuePoll();
   }
 
+  /**
+   * Submit this client's heads/tails call. First-come-first-serve: the server
+   * claims the side for the first caller and forces the opposite on the other.
+   * Resolves with THIS client's effective pick + the shared coin result +
+   * whether this client goes first.
+   */
+  async submitCoinPick(pick: boolean): Promise<{ myPick: boolean; coinResult: boolean; youFirst: boolean }> {
+    if (!this.matchId) return { myPick: pick, coinResult: pick, youFirst: true };
+    const { data, error } = await this.supabase.functions.invoke("coin-pick", {
+      body: { match_id: this.matchId, player_id: this.playerId, pick },
+    });
+    if (error || data?.error || !data) {
+      console.warn("[multiplayer] coin-pick error:", error?.message ?? data?.error);
+      return { myPick: pick, coinResult: pick, youFirst: true };
+    }
+    return {
+      myPick: data.my_pick,
+      coinResult: data.coin_result,
+      youFirst: data.first_turn === this.youAre,
+    };
+  }
+
+  /**
+   * Poll whether the opponent already locked a side. Returns the side THIS
+   * client is forced to (opposite of the opponent's), or null if still open /
+   * this client is the one who claimed it.
+   */
+  async pollCoinLock(): Promise<boolean | null> {
+    if (!this.matchId) return null;
+    const { data } = await this.supabase
+      .from("matches")
+      .select("coin_pick_by, coin_pick")
+      .eq("id", this.matchId)
+      .maybeSingle();
+    if (!data || data.coin_pick_by == null) return null;
+    if (data.coin_pick_by === this.playerId) return null; // we claimed it
+    return !data.coin_pick; // forced to the opposite of the opponent
+  }
+
   /** Tear down all timers and channels. */
   destroy(): void {
     this.destroyed = true;
@@ -177,6 +217,7 @@ export class MultiplayerClient {
       matchId,
       youAre: this.youAre,
       firstTurn: match.first_turn,
+      coinResult: match.coin_result ?? true,
       initialState: match.state as GameState,
       initialEvents: (match.last_events ?? []) as GameEvent[],
     });

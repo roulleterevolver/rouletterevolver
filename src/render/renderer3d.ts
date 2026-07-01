@@ -139,6 +139,25 @@ const CAM_FP = {
   look: new THREE.Vector3(0, SURFACE_Y, 0),
 };
 
+/**
+ * Multiplayer coin-call coordination. When supplied to {@link Renderer3D.playCoinFlip},
+ * the coin uses a shared server result and the heads/tails pick is
+ * first-come-first-serve (the other player is locked to the opposite side).
+ */
+export interface CoinFlipChoice {
+  /**
+   * Submit this client's pick; resolves with the EFFECTIVE side (flipped if the
+   * opponent already claimed it) and whether this client goes first.
+   */
+  submitPick: (pick: boolean) => Promise<{ myPick: boolean; youFirst: boolean }>;
+  /**
+   * Poll whether the opponent already claimed a side; resolves with the side
+   * THIS client is forced to, or null while the pick is still open.
+   */
+  pollLock: () => Promise<boolean | null>;
+}
+
+
 /** One framed camera move: where to sit, where to look, hold time, ease rate. */
 interface CamShot {
   pos: THREE.Vector3;
@@ -172,6 +191,7 @@ export class Renderer3D implements IRenderer {
   // Scene actors.
   private dealer: FigureHandles | undefined;
   private player: FigureHandles | undefined;
+  private handsGroup: THREE.Group | undefined;
   private revolver: RevolverHandles | undefined;
   private bulb: THREE.PointLight | undefined;
   private bulbMesh: THREE.Mesh | undefined;
@@ -303,6 +323,7 @@ export class Renderer3D implements IRenderer {
   private roundsRemaining = 0;
   private spinAllowed = false;
   private playerItems: ReadonlyArray<ItemType> = [];
+  private dealerItems: ReadonlyArray<ItemType> = [];
 
   private readonly onResize = (): void => this.handleResize();
   private readonly onPointerDown = (e: PointerEvent): void => this.handlePointer(e);
@@ -465,6 +486,7 @@ export class Renderer3D implements IRenderer {
     // Add the First Person Player Hands on the table
     const playerHands = buildPlayerHands();
     scene.add(playerHands);
+    this.handsGroup = playerHands;
 
     // --- Revolver lying flat on the felt, on the player's side ----------
     const revolver = buildRevolver();
@@ -490,9 +512,15 @@ export class Renderer3D implements IRenderer {
     // --- Six item boxes per side (the on-table item belt; == max items) --
     this.dealerSlots = this.spawnSlots(scene, -ITEM_ROW_Z, true);
     this.playerSlots = this.spawnSlots(scene, ITEM_ROW_Z, false);
-    // The player's own boxes are clickable to use the item inside.
+    // Both sides' boxes are clickable, but a click only fires if that side is
+    // the LOCAL player's (so player1 uses the player row, player2 the dealer
+    // row). This is what lets the dealer use their own items — and stops either
+    // player from firing the opponent's items.
     this.playerSlots.forEach((slot, i) => {
-      this.interactives.push({ root: slot.group, hit: (): void => this.onSlotClick(i) });
+      this.interactives.push({ root: slot.group, hit: (): void => this.onSlotClick(i, "PLAYER") });
+    });
+    this.dealerSlots.forEach((slot, i) => {
+      this.interactives.push({ root: slot.group, hit: (): void => this.onSlotClick(i, "AI") });
     });
 
     // --- Target markers (shown only while aiming) ------------------------
@@ -628,15 +656,18 @@ export class Renderer3D implements IRenderer {
       vm.roundsRemaining >= 2 &&
       state.spinsUsedThisTurn < state.config.maxSpinsPerTurn;
     this.playerItems = vm.player.items;
+    this.dealerItems = vm.dealer.items;
     if (this.matchOver) {
       this.aiming = false;
       this.firing = false;
     }
-    // When it becomes the Dealer's turn, hold the camera on him so the player
-    // watches his moves (the AI acts after a slow think-delay).
+    // When it becomes the OPPONENT's turn, hold the camera on them so this
+    // client watches the other player act (for player1 that's the AI/dealer;
+    // for player2 it's the PLAYER figure across the mirrored table).
     if (this.lastActive !== vm.activeParticipant) {
       this.lastActive = vm.activeParticipant;
-      if (vm.activeParticipant === "AI" && !this.matchOver) {
+      const opponent = this.localParticipant === "PLAYER" ? "AI" : "PLAYER";
+      if (vm.activeParticipant === opponent && !this.matchOver) {
         this.cutToDealerTurn();
       }
     }
@@ -710,12 +741,14 @@ export class Renderer3D implements IRenderer {
     this.hoverRoot = hovered;
     dom.style.cursor = hovered ? "pointer" : "default";
 
-    // If hovering one of the player's own item zones, report the item for a
-    // simple descriptive caption (null when not over a held item).
+    // If hovering one of the LOCAL player's own item zones, report the item
+    // for a descriptive caption (null when not over a held item).
     let item: ItemType | null = null;
     if (hovered) {
-      const idx = this.playerSlots.findIndex((s) => s.group === hovered);
-      if (idx >= 0) item = this.playerItems[idx] ?? null;
+      const mySlots = this.localParticipant === "PLAYER" ? this.playerSlots : this.dealerSlots;
+      const myItems = this.localParticipant === "PLAYER" ? this.playerItems : this.dealerItems;
+      const idx = mySlots.findIndex((s) => s.group === hovered);
+      if (idx >= 0) item = myItems[idx] ?? null;
       // Bet chips show their value.
       const chip = this.betChips.find((c) => c.group === hovered);
       if (chip) {
@@ -769,9 +802,12 @@ export class Renderer3D implements IRenderer {
     this.onAction({ kind: "SPIN" });
   }
 
-  private onSlotClick(index: number): void {
+  private onSlotClick(index: number, side: "PLAYER" | "AI"): void {
+    // You may only use YOUR OWN items, and only on your turn.
+    if (side !== this.localParticipant) return;
     if (!this.playerTurn) return;
-    const item = this.playerItems[index];
+    const items = side === "PLAYER" ? this.playerItems : this.dealerItems;
+    const item = items[index];
     if (!item) return;
     this.onInteract();
     this.onAction({ kind: "USE_ITEM", item });
@@ -1284,6 +1320,7 @@ export class Renderer3D implements IRenderer {
     result: boolean,
     onFlipSound: () => void,
     onLandSound: () => void,
+    choice?: CoinFlipChoice,
   ): Promise<boolean> {
     return new Promise((resolve) => {
       const scene = this.scene;
@@ -1309,6 +1346,8 @@ export class Renderer3D implements IRenderer {
 
       // Show choice buttons (HEADS / TAILS) — 5 second timer.
       let playerPick: boolean | null = null;
+      let youFirstResult: boolean | null = null;
+      let decided = false;
       const choiceEl = document.createElement("div");
       choiceEl.style.cssText =
         "position:fixed;bottom:18%;left:50%;transform:translateX(-50%);" +
@@ -1323,11 +1362,13 @@ export class Renderer3D implements IRenderer {
           "text-transform:uppercase;transition:border-color .15s,color .15s;";
         btn.addEventListener("mouseenter", () => { btn.style.borderColor = "#fff"; btn.style.color = "#fff"; });
         btn.addEventListener("mouseleave", () => { btn.style.borderColor = "#d4a843"; btn.style.color = "#d9cdb4"; });
-        btn.addEventListener("click", () => { playerPick = val; });
+        btn.addEventListener("click", () => { void finalize(val); });
         return btn;
       };
-      choiceEl.appendChild(makeBtn("HEADS", true));
-      choiceEl.appendChild(makeBtn("TAILS", false));
+      const headsBtn = makeBtn("HEADS", true);
+      const tailsBtn = makeBtn("TAILS", false);
+      choiceEl.appendChild(headsBtn);
+      choiceEl.appendChild(tailsBtn);
       document.body.appendChild(choiceEl);
 
       // Timer: 5 seconds to choose, then auto-pick heads.
@@ -1335,22 +1376,53 @@ export class Renderer3D implements IRenderer {
       timerEl.style.cssText =
         "position:fixed;bottom:28%;left:50%;transform:translateX(-50%);" +
         "font-family:'Courier New',monospace;font-size:14px;letter-spacing:3px;" +
-        "color:#888;z-index:9999;pointer-events:none;";
+        "color:#888;z-index:9999;pointer-events:none;text-align:center;";
       timerEl.textContent = "CHOOSE: 5";
       document.body.appendChild(timerEl);
+
+      // Commit a pick exactly once (from a click, a timeout, or a forced lock).
+      const finalize = async (pick: boolean): Promise<void> => {
+        if (decided) return;
+        decided = true;
+        clearInterval(interval);
+        if (pollInt !== null) clearInterval(pollInt);
+        if (choice) {
+          const res = await choice.submitPick(pick);
+          playerPick = res.myPick;
+          youFirstResult = res.youFirst;
+        } else {
+          playerPick = pick;
+          youFirstResult = pick === result;
+        }
+        choiceEl.remove();
+        timerEl.remove();
+        doFlip();
+      };
 
       let countdown = 5;
       const interval = setInterval(() => {
         countdown--;
-        timerEl.textContent = `CHOOSE: ${countdown}`;
-        if (countdown <= 0 || playerPick !== null) {
-          clearInterval(interval);
-          if (playerPick === null) playerPick = true; // default heads
-          choiceEl.remove();
-          timerEl.remove();
-          doFlip();
-        }
+        if (!decided) timerEl.textContent = `CHOOSE: ${countdown}`;
+        if (countdown <= 0) void finalize(true); // default heads
       }, 1000);
+
+      // Multiplayer: watch for the opponent claiming a side first, then lock
+      // this player to the opposite one (first-come-first-serve).
+      let pollInt: ReturnType<typeof setInterval> | null = null;
+      if (choice) {
+        pollInt = setInterval(async () => {
+          if (decided) return;
+          const forced = await choice.pollLock();
+          if (forced === null || decided) return;
+          // The opponent took the other side; disable it and lock ours in.
+          const takenBtn = forced ? tailsBtn : headsBtn;
+          takenBtn.style.opacity = "0.35";
+          takenBtn.style.borderColor = "#555";
+          takenBtn.disabled = true;
+          timerEl.textContent = `OPPONENT CHOSE ${forced ? "TAILS" : "HEADS"} — YOU GET ${forced ? "HEADS" : "TAILS"}`;
+          setTimeout(() => { void finalize(forced); }, 1100);
+        }, 600);
+      }
 
       const doFlip = (): void => {
         onFlipSound();
@@ -1373,7 +1445,7 @@ export class Renderer3D implements IRenderer {
             coin.rotation.set(result ? 0 : Math.PI, 0, 0);
             setTimeout(() => {
               scene.remove(coin);
-              const won = playerPick === result;
+              const won = youFirstResult ?? (playerPick === result);
               resolve(won);
             }, 1800);
             return;
@@ -1430,6 +1502,37 @@ export class Renderer3D implements IRenderer {
     // (We must NOT mutate the shared CAM_FP constant: it double-flips and only
     // covers the idle base shot.)
     this.mirrorCam = p === "AI";
+    this.configureMultiplayerFigures();
+  }
+
+  /**
+   * Multiplayer is player-vs-player, so BOTH seats are the same hooded figure
+   * and each client is first-person (own body hidden, only hands visible).
+   *   - Player1 sits at +z: keep the hidden player body + hands at +z, and
+   *     replace the scary dealer opponent with a matching hooded figure.
+   *   - Player2 sits at -z (mirrored camera): hide the dealer body (that's
+   *     their own), reveal the hooded player figure across the table as the
+   *     opponent, and reflect the first-person hands onto their side.
+   */
+  private configureMultiplayerFigures(): void {
+    if (!this.scene) return;
+    if (this.localParticipant === "AI") {
+      if (this.dealer) this.dealer.group.visible = false; // our own body → hidden
+      if (this.player) this.player.group.visible = true;  // opponent (hooded)
+      if (this.handsGroup) this.handsGroup.rotation.y = Math.PI; // hands to our side
+    } else {
+      // Swap the dealer model for a hooded player figure so the opponent looks
+      // identical to us. The old dealer group is removed; its stale interactive
+      // entry is harmless (the raycaster ignores objects not in the scene).
+      if (this.dealer) {
+        this.scene.remove(this.dealer.group);
+        const opp = buildPlayer();
+        opp.group.position.set(0, 0, DEALER_Z); // faces +z toward us by default
+        this.scene.add(opp.group);
+        this.dealer = opp;
+        this.interactives.push({ root: opp.group, hit: (): void => this.onTargetClick("AI") });
+      }
+    }
   }
 
   /**
@@ -1714,6 +1817,15 @@ export class Renderer3D implements IRenderer {
       g.rotation.x = targetRx;
       g.rotation.y = targetRy;
       g.rotation.z = targetRz;
+
+      // Player2's camera is reflected across z = 0, so reflect the gun's raise
+      // the same way: it must rise toward THIS player (−z) and point back
+      // across the table, instead of lifting toward the +z (player1) side.
+      if (this.mirrorCam) {
+        g.position.z = GUN_REST_Z - (targetPz - GUN_REST_Z);
+        g.rotation.x = -targetRx;
+        g.rotation.y = -targetRy;
+      }
 
       const muzzle = this.fxProgress("muzzle");
       if (muzzle !== null) {
@@ -2200,20 +2312,21 @@ export class Renderer3D implements IRenderer {
       cam.rotation.z = 0;
     }
 
-    let finalX = this.camPos.x + sx;
+    const finalX = this.camPos.x + sx;
     const finalY = this.camPos.y + sy;
     let finalZ = this.camPos.z;
-    let lookX = this.camLook.x;
+    const lookX = this.camLook.x;
     const lookY = this.camLook.y;
     let lookZ = this.camLook.z;
 
-    // Player2 (the "AI" seat): reflect the whole rig 180° about the table
-    // centre so this client sits on the opposite side and looks back. This is
-    // the single, uniform mirror for EVERY shot — no per-shot bookkeeping.
+    // Player2 (the "AI" seat): reflect the camera across the table centreline
+    // (z = 0) so this client sits on the opposite side and looks back. We flip
+    // Z ONLY — flipping X too would swing the camera to where the world objects
+    // (shells at +x, candles at −x) are NOT, making it stare at empty felt.
+    // A pure Z reflection keeps every object in the correct place and simply
+    // views the same table from the far side.
     if (this.mirrorCam) {
-      finalX = -finalX;
       finalZ = -finalZ;
-      lookX = -lookX;
       lookZ = -lookZ;
     }
 
