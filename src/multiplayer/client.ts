@@ -30,6 +30,7 @@ export class MultiplayerClient {
   private youAre: "player1" | "player2" = "player1";
   private channel: RealtimeChannel | null = null;
   private queueChannel: RealtimeChannel | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private turnDeadline: number | null = null;
   private config: MultiplayerConfig;
@@ -42,26 +43,6 @@ export class MultiplayerClient {
 
   /** Join the matchmaking queue with a bet amount. */
   async joinQueue(betAmount: number): Promise<void> {
-    // Subscribe to the queue table — when our row changes to "matched", we know.
-    this.queueChannel = this.supabase
-      .channel(`queue-watch-${this.playerId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "queue",
-          filter: `player_id=eq.${this.playerId}`,
-        },
-        (payload: any) => {
-          const row = payload.new;
-          if (row.status === "matched" && row.match_id) {
-            this.loadMatchAndStart(row.match_id);
-          }
-        },
-      )
-      .subscribe();
-
     // Call the join-queue Edge Function.
     const { data, error } = await this.supabase.functions.invoke("join-queue", {
       body: { player_id: this.playerId, bet_amount: betAmount },
@@ -71,9 +52,27 @@ export class MultiplayerClient {
 
     // If matched immediately (the function found an opponent).
     if (data?.status === "matched") {
-      this.loadMatchAndStart(data.match_id);
+      await this.loadMatchAndStart(data.match_id);
+      return;
     }
-    // Otherwise: "waiting" — the postgres_changes subscription will fire when matched.
+
+    // Not matched yet — poll every 2 seconds until our queue row changes.
+    const queueId = data?.queue_id;
+    if (!queueId) return;
+
+    this.pollTimer = setInterval(async () => {
+      const { data: row } = await this.supabase
+        .from("queue")
+        .select("status, match_id")
+        .eq("id", queueId)
+        .single();
+
+      if (row && row.status === "matched" && row.match_id) {
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.pollTimer = null;
+        await this.loadMatchAndStart(row.match_id);
+      }
+    }, 2000);
   }
 
   /** Load match data from DB and trigger onMatched. */
@@ -164,6 +163,7 @@ export class MultiplayerClient {
     if (this.channel) this.supabase.removeChannel(this.channel);
     if (this.queueChannel) this.supabase.removeChannel(this.queueChannel);
     if (this.timerInterval) clearInterval(this.timerInterval);
+    if (this.pollTimer) clearInterval(this.pollTimer);
   }
 
   // --- Private ---
