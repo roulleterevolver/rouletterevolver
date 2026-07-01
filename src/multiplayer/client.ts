@@ -14,6 +14,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Action, GameEvent, GameState } from "../engine/types";
+import { USE_SUPABASE_AUTH } from "./config";
 
 export interface MultiplayerConfig {
   supabaseUrl: string;
@@ -69,6 +70,7 @@ export class MultiplayerClient {
 
   /** Join the matchmaking queue with a bet amount, then poll until matched. */
   async joinQueue(betAmount: number): Promise<void> {
+    await this.ensureAuth();
     const { data, error } = await this.supabase.functions.invoke("join-queue", {
       body: { player_id: this.playerId, bet_amount: betAmount },
     });
@@ -195,6 +197,26 @@ export class MultiplayerClient {
   }
 
   // --- internals ----------------------------------------------------------
+
+  /**
+   * When USE_SUPABASE_AUTH is on, ensure an anonymous auth session exists and
+   * adopt its auth.uid() as the player_id (so the RLS policies in rls.sql
+   * apply). No-op otherwise, keeping the current open testing model intact.
+   */
+  private async ensureAuth(): Promise<void> {
+    if (!USE_SUPABASE_AUTH) return;
+    const { data: sessionData } = await this.supabase.auth.getSession();
+    let userId = sessionData.session?.user?.id;
+    if (!userId) {
+      const { data, error } = await this.supabase.auth.signInAnonymously();
+      if (error) {
+        console.warn("[multiplayer] anonymous sign-in failed:", error.message);
+        return;
+      }
+      userId = data.user?.id;
+    }
+    if (userId) this.playerId = userId;
+  }
 
   private async loadMatch(matchId: string): Promise<void> {
     this.matchId = matchId;
