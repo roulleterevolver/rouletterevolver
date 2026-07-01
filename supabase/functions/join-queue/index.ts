@@ -6,6 +6,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createMatch, DEFAULT_CONFIG, SystemRng } from "../_shared/engine.ts";
 
 const TURN_TIMEOUT_SEC = 30;
 
@@ -67,15 +68,12 @@ serve(async (req: Request) => {
     // Found an opponent — create the match!
     const coinFlip = Math.random() < 0.5 ? "player1" : "player2";
 
-    // Generate the initial game state.
-    // NOTE: In production you'd import createMatch from your engine bundle.
-    // For now, placeholder initial state:
+    // Generate the initial game state using the real engine.
+    const rng = new SystemRng();
+    const matchResult = createMatch(DEFAULT_CONFIG, rng);
     const initialState = {
-      // TODO: Replace with actual createMatch() output.
-      config: { startingHp: 4, minRounds: 2, maxRounds: 6, itemsPerRoundSet: 2, maxItems: 8, maxSpinsPerTurn: 1 },
-      phase: "PLAYER_TURN",
+      ...matchResult.state,
       activeParticipant: coinFlip === "player1" ? "PLAYER" : "AI",
-      winner: null,
     };
 
     const deadline = new Date(Date.now() + TURN_TIMEOUT_SEC * 1000).toISOString();

@@ -7,9 +7,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// --- Import the pure game engine (bundled into the function) ---
-// In production you'd bundle these; for now they're inlined or imported from
-// a shared package. The key point: reduce() is pure and stateless.
+// --- Import the pure game engine (bundled) ---
+import { reduce, SystemRng, type GameState, type Action } from "../_shared/engine.ts";
 
 const TURN_TIMEOUT_SEC = 30;
 
@@ -69,15 +68,8 @@ serve(async (req: Request) => {
     }
 
     // --- Run the engine ---
-    // NOTE: In production, you'd import reduce() from your bundled engine.
-    // For now, this is a placeholder that shows the structure.
-    // The actual engine code would be bundled here.
-    //
-    // const result = reduce(state, action, serverRng);
-    //
-    // For the initial scaffold, we'll just echo the structure:
-    const result = { state, events: [], rejected: undefined };
-    // TODO: Replace with actual engine import once bundled.
+    const rng = new SystemRng();
+    const result = reduce(state as GameState, action as Action, rng);
 
     if (result.rejected) {
       return new Response(JSON.stringify({ error: "Action rejected", reason: result.rejected }), { status: 400 });
