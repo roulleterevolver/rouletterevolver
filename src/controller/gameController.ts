@@ -63,7 +63,16 @@ export interface GameControllerOptions {
   readonly setTimeoutFn?: SetTimeoutFn;
   /** Injectable canceller; defaults to the global `clearTimeout`. */
   readonly clearTimeoutFn?: ClearTimeoutFn;
+  /** Fires when a new game state is committed. */
+  readonly onState?: (state: GameState) => void;
+  /** Fires when state transitions generate side-effects (e.g. shots, items). */
+  readonly onEvents?: (events: ReadonlyArray<GameEvent>) => void;
+  /** Fires when the AI prepares to shoot. */
+  readonly onAiAim?: (target: "PLAYER" | "AI") => void;
 }
+
+/** A sensible default AI think-time delay for game feel. */
+export const DEFAULT_AI_DELAY_MS = 800;
 
 /**
  * The hard upper bound on the AI think-time delay (Requirement 6.7: the AI must
@@ -71,9 +80,6 @@ export interface GameControllerOptions {
  * clamps any configured delay to this value so the bound can never be exceeded.
  */
 export const MAX_AI_DELAY_MS = 3000;
-
-/** A sensible default AI think-time delay for game feel. */
-export const DEFAULT_AI_DELAY_MS = 800;
 
 /** The controller's safe fallback action when the AI's choice is rejected. */
 const FALLBACK_AI_ACTION: Action = { kind: "SHOOT", target: "PLAYER" };
@@ -91,20 +97,23 @@ export class GameController {
   private state: GameState | null = null;
   private pendingAiTimer: TimerHandle | null = null;
   private disposed = false;
+  private aiPaused = false;
 
   private readonly stateObservers: StateObserver[] = [];
   private readonly eventObservers: EventObserver[] = [];
+  private readonly onAiAim: (target: "PLAYER" | "AI") => void;
 
   constructor(options: GameControllerOptions = {}) {
     this.rng = options.rng ?? new SystemRng();
-    // Clamp the delay into [0, MAX_AI_DELAY_MS] so Requirement 6.7's 3s bound
-    // can never be violated regardless of what callers pass in.
     const requested = options.aiDelayMs ?? DEFAULT_AI_DELAY_MS;
-    this.aiDelayMs = clampDelay(requested);
+    this.aiDelayMs = Math.min(Math.max(0, requested), MAX_AI_DELAY_MS);
     this.setTimeoutFn =
       options.setTimeoutFn ?? ((handler, delay) => setTimeout(handler, delay));
     this.clearTimeoutFn =
       options.clearTimeoutFn ?? ((handle) => clearTimeout(handle));
+    if (options.onState) this.stateObservers.push(options.onState);
+    if (options.onEvents) this.eventObservers.push(options.onEvents);
+    this.onAiAim = options.onAiAim ?? (() => {});
   }
 
   /** The configured AI think-time delay (already clamped to the 3s bound). */
@@ -140,6 +149,18 @@ export class GameController {
     return this.state;
   }
 
+  pauseAi(): void {
+    if (this.aiPaused) return;
+    this.aiPaused = true;
+    this.cancelPendingAi();
+  }
+
+  resumeAi(): void {
+    if (!this.aiPaused) return;
+    this.aiPaused = false;
+    this.scheduleAiIfNeeded();
+  }
+
   /**
    * Submit validated human input (Requirement 3.8). The action is IGNORED
    * unless it is the Player's Turn in a player-actionable phase, with one
@@ -173,6 +194,11 @@ export class GameController {
 
   /** Register an event observer (the Audio_System subscribes here). */
   onEvents(cb: EventObserver): void {
+    this.eventObservers.push(cb);
+  }
+
+  /** Register an event observer using the old name for backward compatibility. */
+  onEventChange(cb: EventObserver): void {
     this.eventObservers.push(cb);
   }
 
@@ -222,7 +248,7 @@ export class GameController {
    * clamped to at most {@link MAX_AI_DELAY_MS} (Requirement 6.7).
    */
   private scheduleAiIfNeeded(): void {
-    if (this.disposed || this.state === null) return;
+    if (this.disposed || this.state === null || this.aiPaused) return;
     if (!this.isAiActionable()) return;
 
     this.cancelPendingAi();
@@ -254,6 +280,22 @@ export class GameController {
 
     const view = toPlayerView(this.state, "AI");
     const action = decide(view);
+
+    // If the AI decides to shoot, give it an "aiming" pause.
+    if (action.kind === "SHOOT") {
+      this.onAiAim(action.target);
+      this.pendingAiTimer = this.setTimeoutFn(() => {
+        this.pendingAiTimer = null;
+        if (this.disposed || this.state === null) return;
+        let result = reduce(this.state, action, this.rng);
+        if (result.rejected !== undefined) {
+          result = reduce(this.state, FALLBACK_AI_ACTION, this.rng);
+        }
+        this.applyResult(result);
+        this.scheduleAiIfNeeded();
+      }, 1200); // 1.2s dramatic pause
+      return;
+    }
 
     let result = reduce(this.state, action, this.rng);
     if (result.rejected !== undefined) {
@@ -290,10 +332,4 @@ export class GameController {
       cb(events);
     }
   }
-}
-
-/** Clamp a requested AI delay into the safe `[0, MAX_AI_DELAY_MS]` range. */
-function clampDelay(delayMs: number): number {
-  if (!Number.isFinite(delayMs) || delayMs < 0) return 0;
-  return Math.min(delayMs, MAX_AI_DELAY_MS);
 }

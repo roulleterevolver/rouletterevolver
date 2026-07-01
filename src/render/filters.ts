@@ -30,21 +30,25 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Maximum overall scene brightness multiplier. Requirement 8.3 caps brightness
- * at 50 percent of full; we stay safely under at 0.45 so the flicker never
- * exceeds the cap.
+ * Maximum overall scene brightness multiplier. The lamp is a STEADY dim amber
+ * pool, not a strobe: brightness rests near full (0.95) so the scene reads
+ * clearly, with only a small, slow flicker amplitude on top.
  */
-export const MAX_SCENE_BRIGHTNESS = 0.45;
-
-/** The dim end of the brightness flicker. Always below {@link MAX_SCENE_BRIGHTNESS}. */
-export const FLICKER_MIN_BRIGHTNESS = 0.28;
+export const MAX_SCENE_BRIGHTNESS = 0.95;
 
 /**
- * Period of the dim-flicker oscillation, in milliseconds. Requirement 8.3
- * constrains the brightness variation to repeat on an interval within
- * [100, 1000] ms.
+ * The dim end of the brightness flicker. Always below {@link MAX_SCENE_BRIGHTNESS};
+ * the amplitude (0.95 - 0.82 = 0.13) is intentionally tiny so the waver is
+ * barely perceptible.
  */
-export const FLICKER_PERIOD_MS = 420;
+export const FLICKER_MIN_BRIGHTNESS = 0.82;
+
+/**
+ * Period of the dim-flicker oscillation, in milliseconds. A slow 900 ms waver
+ * (within the [100, 1000] ms bound) reads as a steady lamp rather than a
+ * flickering bulb.
+ */
+export const FLICKER_PERIOD_MS = 900;
 
 /** Stable identifiers for each filter in the chain (used by the descriptor). */
 export type FilterName =
@@ -114,7 +118,7 @@ float rand(vec2 co) {
 void main() {
   vec4 color = texture(uTexture, vTextureCoord);
   float grain = rand(vTextureCoord + fract(uTime)) - 0.5;
-  color.rgb += grain * 0.10;
+  color.rgb += grain * 0.05;
   finalColor = color;
 }
 `;
@@ -128,7 +132,7 @@ uniform float uTime;
 void main() {
   vec4 color = texture(uTexture, vTextureCoord);
   float line = sin((vTextureCoord.y * 800.0 + uTime * 30.0) * 3.14159265);
-  color.rgb *= 1.0 - 0.16 * step(0.0, line);
+  color.rgb *= 1.0 - 0.07 * step(0.0, line);
   finalColor = color;
 }
 `;
@@ -142,7 +146,7 @@ void main() {
   vec4 color = texture(uTexture, vTextureCoord);
   vec2 d = vTextureCoord - 0.5;
   float v = smoothstep(0.85, 0.40, length(d));
-  color.rgb *= mix(0.30, 1.0, v);
+  color.rgb *= mix(0.45, 1.0, v);
   finalColor = color;
 }
 `;
@@ -154,7 +158,7 @@ uniform sampler2D uTexture;
 uniform float uTime;
 
 void main() {
-  float amount = 0.0022 * (0.6 + 0.4 * sin(uTime * 6.2831853));
+  float amount = 0.0012 * (0.6 + 0.4 * sin(uTime * 6.2831853));
   vec2 dir = vTextureCoord - 0.5;
   float r = texture(uTexture, vTextureCoord - dir * amount).r;
   float g = texture(uTexture, vTextureCoord).g;
@@ -226,8 +230,9 @@ export function createPostFilters(): PostFilterChain {
       scanTime.uniforms.uTime = seconds;
       chromaTime.uniforms.uTime = seconds;
 
-      // Dim flicker: oscillate brightness between the min and the capped max on
-      // a fixed period within [100, 1000] ms. The max never exceeds 0.5 (Req 8.3).
+      // Dim flicker: oscillate brightness between the min and the max on a slow
+      // fixed period within [100, 1000] ms. The amplitude is tiny (~0.13) so the
+      // amber lamp reads as steady, with only a faint, slow waver.
       const phase = (elapsedMs % FLICKER_PERIOD_MS) / FLICKER_PERIOD_MS;
       const osc = 0.5 + 0.5 * Math.sin(phase * Math.PI * 2);
       currentBrightness =

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- bullet casing -->
+  <rect x="24" y="30" width="16" height="24" rx="3" fill="#a8862f" stroke="#000" stroke-width="3.5"/>
+  <rect x="24" y="30" width="16" height="6" fill="#c8a24a" stroke="#000" stroke-width="2"/>
+  <!-- hollow-point tip -->
+  <path d="M24 30 C24 16 40 16 40 30 Z" fill="#8e2b22" stroke="#000" stroke-width="3.5"/>
+  <ellipse cx="32" cy="22" rx="4" ry="5" fill="#0a0c0f"/>
+</svg>

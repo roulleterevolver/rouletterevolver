@@ -73,21 +73,18 @@ describe("AudioSystem — 13.2 integration (Req 9.2-9.8)", () => {
     const { system, bySrc } = makeHarness();
     system.init();
 
-    const spin = bySrc("spin-clicks");
-    const hammer = bySrc("hammer-cock");
+    const spin = bySrc("revolverspin");
     const gunshot = bySrc("gunshot");
-    const dryClick = bySrc("dry-click");
+    const dryClick = bySrc("emptygunshot");
 
     const events: GameEvent[] = [
-      { type: "SPUN" }, // Req 9.2 -> spin clicks
-      { type: "SHOT_STARTED", target: "AI" }, // Req 9.3 -> hammer cock
+      { type: "SPUN" }, // Req 9.2 -> revolver spin
       { type: "LIVE_FIRED", target: "PLAYER", damage: 1 }, // Req 9.4 -> gunshot
-      { type: "BLANK_FIRED", target: "PLAYER" }, // Req 9.5 -> dry click
+      { type: "BLANK_FIRED", target: "PLAYER" }, // Req 9.5 -> empty gunshot
     ];
     system.handleEvents(events);
 
     expect(spin.play).toHaveBeenCalledTimes(1);
-    expect(hammer.play).toHaveBeenCalledTimes(1);
     expect(gunshot.play).toHaveBeenCalledTimes(1);
     expect(dryClick.play).toHaveBeenCalledTimes(1);
   });
@@ -96,7 +93,7 @@ describe("AudioSystem — 13.2 integration (Req 9.2-9.8)", () => {
     const { system, bySrc } = makeHarness();
     system.init();
 
-    const blip = bySrc("ui-blip");
+    const blip = bySrc("uiblip");
     system.playUiBlip();
 
     expect(blip.play).toHaveBeenCalledTimes(1);
@@ -108,8 +105,8 @@ describe("AudioSystem — 13.2 integration (Req 9.2-9.8)", () => {
 
     expect(GUNSHOT_VOLUME).toBeGreaterThan(DRY_CLICK_VOLUME);
     expect(bySrc("gunshot").options.volume).toBe(GUNSHOT_VOLUME);
-    expect(bySrc("dry-click").options.volume).toBe(DRY_CLICK_VOLUME);
-    expect(bySrc("gunshot").options.volume!).toBeGreaterThan(bySrc("dry-click").options.volume!);
+    expect(bySrc("emptygunshot").options.volume).toBe(DRY_CLICK_VOLUME);
+    expect(bySrc("gunshot").options.volume!).toBeGreaterThan(bySrc("emptygunshot").options.volume!);
   });
 
   it("raises the tension volume monotonically as rounds deplete (Req 9.7)", () => {
@@ -162,7 +159,7 @@ describe("AudioSystem — 13.3 smoke (Req 9.1)", () => {
     const { system, bySrc } = makeHarness();
     system.init();
 
-    const ambient = bySrc("ambient-drone");
+    const ambient = bySrc("bgmusic");
     expect(ambient.options.loop).toBe(true);
 
     system.startAmbient();

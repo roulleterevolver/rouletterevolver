@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="340" viewBox="0 0 260 340">
+  <defs>
+    <linearGradient id="dHood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1c20"/>
+      <stop offset="1" stop-color="#070809"/>
+    </linearGradient>
+    <radialGradient id="dSkull" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#d8d1bf"/>
+      <stop offset="0.7" stop-color="#b3ab97"/>
+      <stop offset="1" stop-color="#7d765f"/>
+    </radialGradient>
+    <radialGradient id="dEye" cx="0.5" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#e8a23a"/>
+      <stop offset="0.6" stop-color="#a8521b"/>
+      <stop offset="1" stop-color="#1a0c06"/>
+    </radialGradient>
+  </defs>
+  <!-- layered paper shadow (offset for 2.5D depth) -->
+  <path d="M44 332 C50 232 78 196 130 196 C182 196 210 232 216 332 Z" fill="#000" opacity="0.45" transform="translate(6 6)"/>
+  <!-- coat / robe -->
+  <path d="M40 332 C46 230 74 194 130 194 C186 194 214 230 220 332 Z" fill="url(#dHood)" stroke="#000" stroke-width="6"/>
+  <!-- chest fold highlight -->
+  <path d="M130 200 L112 264 L130 282 L148 264 Z" fill="#23262b" stroke="#000" stroke-width="4"/>
+  <path d="M130 206 L122 250 L130 260 L138 250 Z" fill="#0c0e11"/>
+  <!-- neck shadow -->
+  <rect x="112" y="172" width="36" height="32" fill="#161a1f" stroke="#000" stroke-width="4"/>
+  <!-- hood -->
+  <path d="M74 122 C74 60 102 40 130 40 C158 40 186 60 186 122 C186 168 160 190 130 190 C100 190 74 168 74 122 Z" fill="url(#dHood)" stroke="#000" stroke-width="6"/>
+  <!-- hood inner rim -->
+  <path d="M90 120 C90 74 108 60 130 60 C152 60 170 74 170 120 C170 150 152 168 130 168 C108 168 90 150 90 120 Z" fill="#050607"/>
+  <!-- skull face -->
+  <path d="M98 120 C98 90 112 76 130 76 C148 76 162 90 162 120 C162 142 152 152 144 160 L142 176 L118 176 L116 160 C108 152 98 142 98 120 Z" fill="url(#dSkull)" stroke="#000" stroke-width="4"/>
+  <!-- cheek shadow -->
+  <path d="M116 158 C108 150 102 140 102 122 C102 134 108 148 118 156 Z" fill="#5e5848" opacity="0.7"/>
+  <!-- eye sockets glowing amber -->
+  <ellipse cx="114" cy="120" rx="12" ry="14" fill="#0a0c0f" stroke="#000" stroke-width="3"/>
+  <ellipse cx="146" cy="120" rx="12" ry="14" fill="#0a0c0f" stroke="#000" stroke-width="3"/>
+  <circle cx="114" cy="122" r="6" fill="url(#dEye)"/>
+  <circle cx="146" cy="122" r="6" fill="url(#dEye)"/>
+  <!-- nasal cavity -->
+  <path d="M130 130 L123 148 L137 148 Z" fill="#0a0c0f"/>
+  <!-- teeth -->
+  <g stroke="#000" stroke-width="2" fill="#0c0e11">
+    <rect x="116" y="160" width="6" height="11"/>
+    <rect x="124" y="160" width="6" height="12"/>
+    <rect x="132" y="160" width="6" height="12"/>
+    <rect x="140" y="160" width="6" height="11"/>
+  </g>
+</svg>

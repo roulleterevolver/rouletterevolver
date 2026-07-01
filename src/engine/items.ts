@@ -23,7 +23,6 @@ import type {
   RoundType,
 } from "./types";
 import type { RNG } from "../rng/rng";
-import { loadRoundSet } from "./lifecycle";
 
 /** The other Participant in the Match. */
 function opponentOf(id: ParticipantId): ParticipantId {
@@ -88,7 +87,7 @@ function removeOneItem(
 export function applyItem(
   state: GameState,
   item: ItemType,
-  rng: RNG,
+  _rng: RNG,
 ): EngineResult {
   const userId = state.activeParticipant;
   const user = state.participants[userId];
@@ -137,13 +136,42 @@ export function applyItem(
     }
 
     case "SPEED_LOADER": {
-      // Requirement 5.5: reload the Cylinder as a new Round_Set. The item has
-      // already been removed from the user in `baseState`.
-      const reloaded = loadRoundSet(baseState, rng);
-      return {
-        state: reloaded.state,
-        events: [...events, ...reloaded.events],
+      // Eject the current round from the cylinder (like Beer in Buckshot).
+      // The round is discarded (shown to the user via the event) and the
+      // cylinder advances to the next loaded chamber. If no round is loaded,
+      // the item is consumed but nothing happens.
+      const round = currentChamber(state.cylinder);
+      if (round === null) {
+        return { state: baseState, events };
+      }
+      // Empty the current chamber and advance.
+      const chambers: Chamber[] = state.cylinder.chambers.slice();
+      chambers[state.cylinder.currentIndex] = null;
+      let next = state.cylinder.currentIndex + 1;
+      while (next < chambers.length && chambers[next] === null) next++;
+      const ejectedCylinder: Cylinder = {
+        chambers,
+        currentIndex: next,
+        size: state.cylinder.size,
       };
+      const ejectedState: GameState = {
+        ...baseState,
+        cylinder: ejectedCylinder,
+        // Clear revealed knowledge since the chamber changed.
+        participants: {
+          ...baseState.participants,
+          [userId]: { ...userAfterRemoval, revealedCurrentChamber: null },
+        },
+      };
+      // Emit the ejected round type so the renderer/audio can show it.
+      events.push({
+        type: "ROUND_SET_LOADED",
+        live: round === "LIVE" ? 1 : 0,
+        blank: round === "BLANK" ? 1 : 0,
+        total: 1,
+        roundNumber: 0,
+      });
+      return { state: ejectedState, events };
     }
 
     case "MEDKIT": {

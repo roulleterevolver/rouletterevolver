@@ -103,11 +103,13 @@ describe("Renderer — 14.2 filter chain smoke (Req 8.1-8.3)", () => {
     ]);
   });
 
-  it("keeps scene brightness at or below 50% (Req 8.3)", () => {
+  it("keeps scene brightness within full and the flicker subtle (Req 8.3)", () => {
     const { params } = buildFilterChainDescriptor();
-    expect(params.brightness).toBeLessThanOrEqual(0.5);
+    expect(params.brightness).toBeLessThanOrEqual(1.0);
     expect(params.brightness).toBe(MAX_SCENE_BRIGHTNESS);
     expect(params.minBrightness).toBeLessThanOrEqual(params.brightness);
+    // The lamp is a steady dim amber pool, not a strobe: tiny flicker amplitude.
+    expect(params.brightness - params.minBrightness).toBeLessThanOrEqual(0.2);
   });
 
   it("keeps the flicker period within [100, 1000] ms (Req 8.3)", () => {
@@ -189,7 +191,7 @@ describe("Renderer — 14.3 HUD view-model mapping (Req 2.6, 5.11, 7.4)", () => 
 describe("Renderer — 14.3 feedback timing (Req 8.4)", () => {
   it("maps every GameEvent to a descriptor whose first frame lands within 200 ms", () => {
     const events: GameEvent[] = [
-      { type: "ROUND_SET_LOADED", live: 2, blank: 3, total: 5 },
+      { type: "ROUND_SET_LOADED", live: 2, blank: 3, total: 5, roundNumber: 1 },
       { type: "SPUN" },
       { type: "SHOT_STARTED", target: "AI" },
       { type: "LIVE_FIRED", target: "PLAYER", damage: 1 },

@@ -13,8 +13,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.0",
+    "@types/three": "^0.185.0",
+    "gsap": "^3.15.0",
     "howler": "^2.2.4",
-    "pixi.js": "^8.6.6"
+    "pixi.js": "^8.6.6",
+    "three": "^0.185.0"
   },
   "devDependencies": {
     "@types/howler": "^2.2.12",

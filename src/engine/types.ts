@@ -142,7 +142,7 @@ export type Action =
  * Audio_System so they need no knowledge of the rules.
  */
 export type GameEvent =
-  | { readonly type: "ROUND_SET_LOADED"; readonly live: number; readonly blank: number; readonly total: number }
+  | { readonly type: "ROUND_SET_LOADED"; readonly live: number; readonly blank: number; readonly total: number; readonly roundNumber: number }
   | { readonly type: "SPUN" }
   | { readonly type: "SHOT_STARTED"; readonly target: ParticipantId }
   | { readonly type: "LIVE_FIRED"; readonly target: ParticipantId; readonly damage: number }

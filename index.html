@@ -9,73 +9,600 @@
       body {
         margin: 0;
         padding: 0;
-        height: 100%;
-        background: #050506;
-        color: #c8c8c8;
+        width: 100vw;
+        background: #0a0a0b;
+        color: #c9c2b0;
         font-family: "Courier New", monospace;
-        overflow: hidden;
       }
       #app {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        z-index: 1;
+      }
+      /* The renderer's canvas fills the whole viewport. */
+      .rr-canvas-host {
         position: absolute;
         inset: 0;
+      }
+      .rr-canvas-host canvas {
+        display: block;
+        width: 100vw !important;
+        height: 100vh !important;
+      }
+      /* Controls overlay along the bottom edge, above the canvas. */
+      .rr-controls-host {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
         display: flex;
+        justify-content: center;
+        padding: 18px 12px 22px;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      /* ---- End-of-match overlay (only shown when the match ends) -------- */
+      .rr-endcard {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 30px;
+        pointer-events: auto;
+        opacity: 0;
+        animation: rr-fade-in 2s ease forwards;
+        background: rgba(0, 0, 0, 0.98);
+        backdrop-filter: blur(8px);
+      }
+      .rr-endcard::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
+        pointer-events: none;
+        z-index: 51;
+      }
+      .rr-endcard-win {
+        background: radial-gradient(circle, rgba(40, 5, 5, 0.98) 0%, rgba(0, 0, 0, 0.98) 100%);
+      }
+      .rr-endcard-lose {
+        background: radial-gradient(circle, rgba(139, 0, 0, 0.8) 0%, rgba(30, 0, 0, 0.98) 60%, rgba(0, 0, 0, 1) 100%);
+      }
+      @keyframes rr-fade-in {
+        from { opacity: 0; backdrop-filter: blur(0px); }
+        to { opacity: 1; backdrop-filter: blur(8px); }
+      }
+      
+      .rr-turn {
+        font-size: 80px;
+        letter-spacing: 16px;
+        text-transform: uppercase;
+        font-weight: 900;
+        text-align: center;
+        font-family: "Courier New", monospace;
+        position: relative;
+        z-index: 52;
+      }
+      .rr-turn-win { 
+        color: #ffffff; 
+        text-shadow: 0px 0px 10px #ff0000, 0px 5px 5px rgba(255,0,0,0.8), 0px 15px 10px rgba(255,0,0,0.5);
+        animation: rr-win-blood-drip 3s infinite alternate;
+      }
+      .rr-turn-lose { 
+        color: #8b0000; 
+        text-shadow: 0px 0px 15px #ff0000, 0px 10px 5px rgba(139,0,0,0.9), 0px 25px 10px rgba(139,0,0,0.7), 0px 45px 15px rgba(139,0,0,0.5), 0px 70px 20px rgba(139,0,0,0.3);
+        animation: rr-lose-blood-drip 2s infinite alternate;
+      }
+
+      @keyframes rr-win-blood-drip {
+        0% { text-shadow: 0px 0px 10px #ff0000, 0px 5px 5px rgba(255,0,0,0.8), 0px 15px 10px rgba(255,0,0,0.5); transform: scale(1); }
+        100% { text-shadow: 0px 0px 15px #ff0000, 0px 15px 5px rgba(255,0,0,0.8), 0px 30px 10px rgba(255,0,0,0.5); transform: scale(1.02); }
+      }
+
+      @keyframes rr-lose-blood-drip {
+        0% { text-shadow: 0px 0px 15px #ff0000, 0px 10px 5px rgba(139,0,0,0.9), 0px 25px 10px rgba(139,0,0,0.7), 0px 45px 15px rgba(139,0,0,0.5), 0px 70px 20px rgba(139,0,0,0.3); transform: scale(1) translateY(0); }
+        100% { text-shadow: 0px 0px 20px #ff0000, 0px 15px 5px rgba(139,0,0,0.9), 0px 40px 10px rgba(139,0,0,0.7), 0px 70px 15px rgba(139,0,0,0.5), 0px 100px 20px rgba(139,0,0,0.0); transform: scale(1.05) translateY(2px); }
+      }
+
+      @keyframes rr-crt-flicker {
+        0% { opacity: 0.9; transform: skewX(0deg); }
+        50% { opacity: 1; transform: skewX(1deg); }
+        100% { opacity: 0.8; transform: skewX(-1deg); }
+      }
+
+      @keyframes rr-lose-glitch {
+        0% { transform: translate(0); opacity: 1; }
+        20% { transform: translate(-4px, 2px); opacity: 0.8; }
+        40% { transform: translate(4px, -1px); opacity: 1; }
+        60% { transform: translate(-2px, -4px) skewX(5deg); opacity: 0.9; }
+        80% { transform: translate(2px, 4px); opacity: 1; }
+        100% { transform: translate(0); opacity: 1; }
+      }
+
+      /* ---- New match ---------------------------------------------------- */
+      .rr-newmatch {
+        font-family: "Courier New", monospace;
+        font-size: 24px;
+        font-weight: bold;
+        letter-spacing: 8px;
+        text-transform: uppercase;
+        color: #ffffff;
+        background: #000000;
+        border: 4px solid #ffffff;
+        border-radius: 0;
+        padding: 16px 36px;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        position: relative;
+        z-index: 52;
+      }
+      .rr-newmatch:hover {
+        background: #ffffff;
+        color: #000000;
+        box-shadow: 0 0 20px rgba(255,255,255,0.8);
+      }
+      /* ---- Home Menu ---------------------------------------------------- */
+      .rr-home {
+        position: absolute;
+        inset: 0;
+        z-index: 60;
+        background: transparent;
+        pointer-events: auto;
+        transition: opacity 1s ease;
+        overflow-y: scroll;
+        overflow-x: hidden;
+      }
+      .rr-home::-webkit-scrollbar {
+        width: 8px;
+      }
+      .rr-home::-webkit-scrollbar-track {
+        background: #000;
+        border-left: 1px solid #222;
+      }
+      .rr-home::-webkit-scrollbar-thumb {
+        background: #444;
+      }
+      .rr-home::-webkit-scrollbar-thumb:hover {
+        background: #ff3333;
+      }
+      .rr-home.rr-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .rr-hero {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        padding-left: 80px;
+        opacity: 0;
+        transition: opacity 1.5s ease;
+      }
+      .rr-hero.rr-visible {
+        opacity: 1;
+      }
+      .rr-section {
+        min-height: 100vh;
+        padding: 0 80px;
+        color: #fff;
+        font-family: "Courier New", monospace;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-width: 900px;
+      }
+      .rr-section-title {
+        font-size: 40px;
+        font-weight: bold;
+        letter-spacing: 12px;
+        color: #fff;
+        margin-bottom: 40px;
+        text-transform: uppercase;
+        border-bottom: 2px solid #ff3333;
+        padding-bottom: 12px;
+        display: inline-block;
+      }
+      .rr-section-title strong {
+        color: #ff3333;
+        font-weight: bold;
+      }
+      .rr-section-content p {
+        font-size: 18px;
+        line-height: 1.8;
+        margin-bottom: 24px;
+        color: #c9c2b0;
+        letter-spacing: 2px;
+      }
+      .rr-section-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 20px;
+      }
+      .rr-card {
+        background: #000;
+        border: 1px solid #333;
+        padding: 30px 24px;
+        transition: transform 0.2s, border-color 0.2s;
+        border-radius: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      .rr-card::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; bottom: 0;
+        width: 4px;
+        background: #333;
+        transition: background 0.2s;
+      }
+      .rr-card:hover {
+        transform: translate(4px, -4px);
+        border-color: #ff3333;
+        box-shadow: -4px 4px 0px rgba(255, 51, 51, 0.2);
+      }
+      .rr-card:hover::before {
+        background: #ff3333;
+      }
+      .rr-card h3 {
+        margin: 0 0 12px 0;
+        font-size: 20px;
+        font-weight: bold;
+        letter-spacing: 4px;
+        color: #fff;
+        text-transform: uppercase;
+        padding-left: 10px;
+      }
+      .rr-card p {
+        margin: 0;
+        color: #888;
+        font-size: 14px;
+        line-height: 1.6;
+        letter-spacing: 1px;
+        padding-left: 10px;
+      }
+      .rr-card-3d {
+        width: 100%;
+        height: 140px;
+        display: block;
+        margin-bottom: 14px;
+        border-radius: 0;
+        background: #050506;
+      }
+      /* ---- Settings panel ---- */
+      .rr-settings-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        background: rgba(0,0,0,0.92);
+        backdrop-filter: blur(4px);
+        display: none;
         align-items: center;
         justify-content: center;
       }
-      .rr-controls {
+      .rr-settings-overlay.rr-open { display: flex; }
+      .rr-settings-box {
+        background: #0a0a0c;
+        border: 1px solid #333;
+        padding: 40px 50px;
+        max-width: 420px;
+        width: 90%;
+        font-family: "Courier New", monospace;
+      }
+      .rr-settings-box h2 {
+        font-size: 22px;
+        letter-spacing: 8px;
+        margin: 0 0 30px 0;
+        color: #fff;
+        text-transform: uppercase;
+      }
+      .rr-settings-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+      .rr-settings-row label {
+        font-size: 13px;
+        letter-spacing: 3px;
+        color: #aaa;
+        text-transform: uppercase;
+      }
+      .rr-settings-row input[type="range"] {
+        width: 140px;
+        accent-color: #ff3333;
+      }
+      .rr-settings-close {
+        font-family: inherit;
+        font-size: 14px;
+        letter-spacing: 4px;
+        color: #888;
+        background: none;
+        border: 1px solid #444;
+        padding: 10px 24px;
+        cursor: pointer;
+        margin-top: 20px;
+        transition: color 0.2s, border-color 0.2s;
+      }
+      .rr-settings-close:hover { color: #fff; border-color: #fff; }
+      .rr-footer {
+        min-height: 20vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: #555;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+      }
+      .rr-home-title {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 72px;
+        letter-spacing: 16px;
+        font-weight: 200;
+        color: #fff;
+        text-transform: uppercase;
+        text-align: left;
+        line-height: 1.0;
+        text-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
+        margin-bottom: 20px;
+        animation: rr-crt-flicker 0.2s infinite alternate;
+      }
+      .rr-home-title strong {
+        font-weight: 900;
+        color: #ff3333;
+      }
+      .rr-home-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        align-items: flex-start;
+      }
+      .rr-play-btn {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 24px;
+        font-weight: 400;
+        letter-spacing: 8px;
+        color: #ffffff;
+        background: transparent;
+        border: none;
+        padding: 8px 0;
+        cursor: pointer;
+        position: relative;
+        text-shadow: 0 2px 10px rgba(0,0,0,1);
+        transition: color 0.2s, transform 0.2s;
+        transform-origin: left;
+      }
+      .rr-play-btn::before {
+        content: "";
+        position: absolute;
+        left: -30px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 12px;
+        height: 2px;
+        background-color: #ff3333;
+        opacity: 0;
+        transition: opacity 0.2s, left 0.2s;
+      }
+      .rr-play-btn:hover {
+        color: #ff3333;
+        transform: translateX(10px);
+      }
+      .rr-play-btn:hover::before {
+        opacity: 1;
+        left: -20px;
+      }
+      .rr-disabled {
+        opacity: 0.2;
+        pointer-events: none;
+      }
+
+      /* ---- Creepy action caption (Buckshot-style, low-centre) ---------- */
+      .rr-caption {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 15%;
+        margin: 0 auto;
+        width: min(90vw, 760px);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
-        width: 100%;
-      }
-      .rr-status {
-        font-size: 16px;
-        letter-spacing: 3px;
-        color: #7ec850;
-        text-transform: uppercase;
-      }
-      .rr-info {
-        font-size: 12px;
-        letter-spacing: 1px;
-        color: #8a8a8a;
-      }
-      .rr-row {
-        display: flex;
-        flex-wrap: wrap;
         justify-content: center;
         gap: 8px;
+        text-align: center;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 20;
+        transition: opacity 0.5s ease, transform 0.5s ease;
+        transform: translateY(14px);
+        text-shadow: 0 0 10px rgba(0, 0, 0, 0.9), 0 2px 4px #000;
       }
-      .rr-btn {
+      .rr-caption.rr-caption-on {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .rr-caption-title {
+        font-family: "Courier New", monospace;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: 8px;
+        padding-left: 8px; /* offset trailing letter-spacing so it stays centred */
+        text-transform: uppercase;
+        color: #d9cdb4;
+        min-height: 34px;
+        animation: rr-caption-flicker 2.6s steps(40) infinite;
+      }
+      .rr-caption-desc {
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        letter-spacing: 3px;
+        padding-left: 3px;
+        text-transform: uppercase;
+        color: #9a3b33;
+        min-height: 16px;
+        line-height: 1.4;
+      }
+      @keyframes rr-caption-flicker {
+        0%, 100% { opacity: 1; }
+        7% { opacity: 0.4; }
+        8% { opacity: 1; }
+        47% { opacity: 1; }
+        48% { opacity: 0.6; }
+        49% { opacity: 1; }
+        72% { opacity: 0.85; }
+        73% { opacity: 1; }
+      }
+
+      /* ---- Hover hint (instant item description, top-centre) ----------- */
+      .rr-hint {
+        position: fixed;
+        left: 50%;
+        bottom: 10%;
+        transform: translate(-50%, 6px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        text-align: center;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 9999;
+        transition: opacity 0.1s ease, transform 0.1s ease;
+        text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+      }
+      .rr-hint.rr-hint-on {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+      .rr-hint-title {
+        font-family: "Courier New", monospace;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 5px;
+        text-transform: uppercase;
+        color: #d9cdb4;
+      }
+      .rr-hint-desc {
         font-family: "Courier New", monospace;
         font-size: 12px;
         letter-spacing: 2px;
         text-transform: uppercase;
-        color: #cdc6b8;
-        background: #1b1f24;
-        border: 2px solid #000;
-        border-radius: 6px;
-        padding: 8px 14px;
-        cursor: pointer;
-      }
-      .rr-btn:hover:not(:disabled) {
-        border-color: #7ec850;
-        color: #fff;
-      }
-      .rr-btn:disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-      }
-      .rr-item {
-        border-color: #7ec850;
-      }
-      .rr-new-match {
-        border-color: #8e2b22;
-        color: #e0a59f;
+        color: #8a7c66;
       }
     </style>
   </head>
   <body>
+    <!-- Settings panel -->
+    <div class="rr-settings-overlay" id="rr-settings">
+      <div class="rr-settings-box">
+        <h2>SETTINGS</h2>
+        <div class="rr-settings-row">
+          <label>MUSIC</label>
+          <input type="range" min="0" max="100" value="60" id="rr-vol-music">
+        </div>
+        <div class="rr-settings-row">
+          <label>SFX</label>
+          <input type="range" min="0" max="100" value="80" id="rr-vol-sfx">
+        </div>
+        <div class="rr-settings-row">
+          <label>TEXT BLIP</label>
+          <input type="range" min="0" max="100" value="40" id="rr-vol-blip">
+        </div>
+        <button class="rr-settings-close" id="rr-settings-close">CLOSE</button>
+      </div>
+    </div>
+
+    <div id="landing-page" class="rr-home">
+      <!-- HERO SECTION -->
+      <section class="rr-hero">
+        <div class="rr-home-title"><strong>REVOLVER</strong><br>ROULETTE</div>
+        <div class="rr-home-menu">
+          <button id="rr-play-btn" class="rr-play-btn">PULL THE TRIGGER</button>
+          <button id="rr-multi-btn" class="rr-play-btn">FIND OPPONENT</button>
+          <button id="rr-settings-btn" class="rr-play-btn">SETTINGS</button>
+        </div>
+      </section>
+
+      <!-- HOW IT WORKS -->
+      <section class="rr-section">
+        <h2 class="rr-section-title"><strong>THE TABLE</strong></h2>
+        <div class="rr-section-content">
+          <p>A six-chamber revolver. A hooded figure across the felt. The cylinder is loaded with a blind mix of live rounds and blanks &mdash; you saw how many of each, once, before they disappeared into the gun.</p>
+          <p>Each turn: pick up the gun and choose. Aim it across the table, or press it to your own temple. A blank on yourself means you keep your turn. Anything else passes it.</p>
+          <p>Last one breathing wins.</p>
+        </div>
+      </section>
+
+      <!-- ITEMS -->
+      <section class="rr-section">
+        <h2 class="rr-section-title"><strong>WHAT'S</strong> ON THE TABLE</h2>
+        <div class="rr-section-content">
+          <p>Between rounds, the table offers you things. Take them. You'll need every edge.</p>
+        </div>
+        <div class="rr-section-grid">
+          <div class="rr-card">
+            <canvas class="rr-card-3d" data-item="MAGNIFYING_GLASS"></canvas>
+            <h3>MAGNIFIER</h3>
+            <p>See the current round in the chamber.</p>
+          </div>
+          <div class="rr-card">
+            <canvas class="rr-card-3d" data-item="HANDCUFFS"></canvas>
+            <h3>SHACKLES</h3>
+            <p>The Dealer skips their next turn.</p>
+          </div>
+          <div class="rr-card">
+            <canvas class="rr-card-3d" data-item="MEDKIT"></canvas>
+            <h3>ELIXIR</h3>
+            <p>Restore one life.</p>
+          </div>
+          <div class="rr-card">
+            <canvas class="rr-card-3d" data-item="HOLLOW_POINT"></canvas>
+            <h3>VENOM</h3>
+            <p>Next live round deals double damage.</p>
+          </div>
+          <div class="rr-card">
+            <canvas class="rr-card-3d" data-item="INVERTER"></canvas>
+            <h3>THE SWITCH</h3>
+            <p>Flip the current round. Live becomes blank.</p>
+          </div>
+          <div class="rr-card">
+            <canvas class="rr-card-3d" data-item="SPEED_LOADER"></canvas>
+            <h3>MOON CLIP</h3>
+            <p>Eject the current round. You see what it was.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ROUNDS -->
+      <section class="rr-section">
+        <h2 class="rr-section-title"><strong>ROUNDS</strong></h2>
+        <div class="rr-section-content">
+          <p>Each set loads 2&ndash;6 rounds into the cylinder, always at least one live and one blank. You see the count once &mdash; then they vanish into the gun.</p>
+          <p>When the cylinder empties, a new set loads automatically and both players receive two items from the table. Adapt or die.</p>
+        </div>
+      </section>
+
+      <!-- FOOTER -->
+      <footer class="rr-footer">
+        <div style="display:flex; flex-direction:column; gap:8px; align-items:center;">
+          <span style="color:#555; font-size:11px; letter-spacing:3px;">BUILT WITH THREE.JS &middot; TYPESCRIPT &middot; HOWLER</span>
+          <span style="color:#333; font-size:11px; letter-spacing:2px;">REVOLVER ROULETTE &copy; 2026</span>
+        </div>
+      </footer>
+    </div>
+    
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

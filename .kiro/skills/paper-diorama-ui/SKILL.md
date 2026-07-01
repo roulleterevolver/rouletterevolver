@@ -64,8 +64,14 @@ Keep the diorama *structure*, invert the *mood*:
 - **Lighting:** a single harsh **overhead spotlight** with a slow dim flicker
   (see the engine's flicker spec: brightness <= 50%, period 100-1000 ms). Deep
   shadows everywhere else.
-- **Palette:** desaturated near-black base with **one accent** — sickly green
-  or blood red. Resist adding more colors; restraint is what reads as "deadly."
+- **Palette (Buckshot-inspired, NO green):** grimy desaturated charcoal/black
+  base (`#0a0a0b`–`#1c1a14`), **bone** off-white for text/skin (`#c9c2b0`),
+  **blood red** as the danger/HP accent (`#9e2a22`/`#c1352b`), and a single
+  **dim amber lamp** as the only warm light (`#d9a441`, used sparingly). Avoid
+  green entirely. Restraint reads as "deadly."
+- **Lighting must be STEADY:** a dim amber overhead lamp with only a faint, slow
+  waver (barely perceptible) — never a fast strobe. The scene should read clear,
+  not murky or seizure-inducing.
 - **Outlines:** keep them thick and black; they anchor the papercraft feel.
 - **Post-processing:** layer the retro filter chain on top — film grain,
   scanlines, vignette, chromatic aberration — to bind everything into one

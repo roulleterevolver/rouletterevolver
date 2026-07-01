@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <radialGradient id="steel" cx="0.42" cy="0.36" r="0.7">
+      <stop offset="0" stop-color="#4a525b"/>
+      <stop offset="0.7" stop-color="#252b31"/>
+      <stop offset="1" stop-color="#14181d"/>
+    </radialGradient>
+    <radialGradient id="hub" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#5a626b"/>
+      <stop offset="1" stop-color="#20262c"/>
+    </radialGradient>
+  </defs>
+  <!-- outer body -->
+  <circle cx="100" cy="100" r="88" fill="url(#steel)" stroke="#000" stroke-width="7"/>
+  <circle cx="100" cy="100" r="78" fill="none" stroke="#0d1014" stroke-width="6"/>
+  <!-- six chambers -->
+  <g stroke="#000" stroke-width="4">
+    <circle cx="100" cy="42" r="16" fill="#0a0c0f"/>
+    <circle cx="150" cy="71" r="16" fill="#0a0c0f"/>
+    <circle cx="150" cy="129" r="16" fill="#0a0c0f"/>
+    <circle cx="100" cy="158" r="16" fill="#0a0c0f"/>
+    <circle cx="50" cy="129" r="16" fill="#0a0c0f"/>
+    <circle cx="50" cy="71" r="16" fill="#0a0c0f"/>
+  </g>
+  <!-- center hub + pin -->
+  <circle cx="100" cy="100" r="26" fill="url(#hub)" stroke="#000" stroke-width="5"/>
+  <circle cx="100" cy="100" r="8" fill="#0a0c0f" stroke="#000" stroke-width="3"/>
+  <!-- subtle highlight -->
+  <path d="M58 56 A60 60 0 0 1 120 40" fill="none" stroke="#6b737c" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+</svg>

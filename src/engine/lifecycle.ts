@@ -32,14 +32,14 @@ export const ALL_ITEM_TYPES: ReadonlyArray<ItemType> = [
 /**
  * A sensible default configuration, consistent with the requirements' ranges:
  * startingHp 2..6, minRounds >= 2, maxRounds <= 6, itemsPerRoundSet 0..4,
- * maxItems 4, maxSpinsPerTurn 1..3.
+ * maxItems 8 (one per on-table zone), maxSpinsPerTurn 1..3.
  */
 export const DEFAULT_CONFIG: GameConfig = {
-  startingHp: 4,
+  startingHp: 5,
   minRounds: 2,
   maxRounds: 6,
   itemsPerRoundSet: 2,
-  maxItems: 4,
+  maxItems: 8,
   maxSpinsPerTurn: 1,
 };
 
@@ -84,16 +84,16 @@ export function grantItems(
   return items;
 }
 
-/** Build a fresh Participant with full HP, no multiplier, and granted Items. */
 function makeParticipant(
   id: ParticipantId,
   config: GameConfig,
   rng: RNG,
 ): Participant {
+  // Round 1 (start of match) grants 0 items according to Buckshot Roulette rules.
   return {
     id,
     hp: config.startingHp,
-    items: grantItems([], config.itemsPerRoundSet, config.maxItems, rng),
+    items: grantItems([], 0, config.maxItems, rng),
     damageMultiplier: 1,
     revealedCurrentChamber: null,
   };
@@ -133,6 +133,7 @@ export function createMatch(config: GameConfig, rng: RNG): EngineResult {
       live: counts.live,
       blank: counts.blank,
       total: cylinder.size,
+      roundNumber: 1,
     },
   ];
 
@@ -156,13 +157,19 @@ export function loadRoundSet(state: GameState, rng: RNG): EngineResult {
   const prevPlayer = state.participants.PLAYER;
   const prevAi = state.participants.AI;
 
+  // Buckshot Roulette item logic:
+  // Round 2 (roundSetIndex 0 ending) -> 2 items
+  // Round 3+ (roundSetIndex 1+ ending) -> 4 items
+  let grantCount = 4;
+  if (state.roundSetIndex === 0) grantCount = 2;
+
   const player: Participant = {
     ...prevPlayer,
-    items: grantItems(prevPlayer.items, config.itemsPerRoundSet, config.maxItems, rng),
+    items: grantItems(prevPlayer.items, grantCount, config.maxItems, rng),
   };
   const ai: Participant = {
     ...prevAi,
-    items: grantItems(prevAi.items, config.itemsPerRoundSet, config.maxItems, rng),
+    items: grantItems(prevAi.items, grantCount, config.maxItems, rng),
   };
 
   const newState: GameState = {
@@ -183,6 +190,7 @@ export function loadRoundSet(state: GameState, rng: RNG): EngineResult {
       live: counts.live,
       blank: counts.blank,
       total: cylinder.size,
+      roundNumber: state.roundSetIndex + 2,
     },
   ];
 

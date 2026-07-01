@@ -155,7 +155,7 @@ This out-of-scope context is recorded so design decisions in this milestone do n
 
 1. THE Renderer SHALL render the game scene in 2D using a canvas-based rendering approach at a sustained frame rate of at least 30 frames per second.
 2. THE Renderer SHALL apply post-processing-style visual filters including film grain, scanlines, vignette, and chromatic aberration to every rendered frame.
-3. WHILE a Match is in progress, THE Renderer SHALL apply a lighting effect with overall scene brightness no greater than 50 percent of full brightness and a brightness variation that repeats at an interval between 100 milliseconds and 1000 milliseconds.
+3. WHILE a Match is in progress, THE Renderer SHALL light the scene with a dim amber lamp whose brightness varies only subtly (a slow waver, not a fast strobe), with the brightness variation repeating on an interval between 100 milliseconds and 1000 milliseconds and the variation amplitude small enough that the scene remains clearly readable.
 4. WHEN a Participant takes an action, THE Renderer SHALL display a visual response to that action within 200 milliseconds.
 5. IF the canvas-based rendering context cannot be initialized, THEN THE Renderer SHALL stop rendering the scene and present a visual indication that rendering is unavailable, while retaining the current Match state.
 
