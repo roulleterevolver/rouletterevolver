@@ -56,21 +56,35 @@ export class MultiplayerClient {
       return;
     }
 
-    // Not matched yet — poll every 2 seconds until our queue row changes.
+    // Not matched yet — poll every 2 seconds until our queue row OR a match appears.
     const queueId = data?.queue_id;
-    if (!queueId) return;
-
     this.pollTimer = setInterval(async () => {
-      const { data: row } = await this.supabase
-        .from("queue")
-        .select("status, match_id")
-        .eq("id", queueId)
+      // Check queue row first.
+      if (queueId) {
+        const { data: row } = await this.supabase
+          .from("queue")
+          .select("status, match_id")
+          .eq("id", queueId)
+          .single();
+        if (row && row.status === "matched" && row.match_id) {
+          if (this.pollTimer) clearInterval(this.pollTimer);
+          this.pollTimer = null;
+          await this.loadMatchAndStart(row.match_id);
+          return;
+        }
+      }
+      // Fallback: check matches table directly.
+      const { data: match } = await this.supabase
+        .from("matches")
+        .select("id")
+        .or(`player1_id.eq.${this.playerId},player2_id.eq.${this.playerId}`)
+        .eq("status", "active")
+        .limit(1)
         .single();
-
-      if (row && row.status === "matched" && row.match_id) {
+      if (match) {
         if (this.pollTimer) clearInterval(this.pollTimer);
         this.pollTimer = null;
-        await this.loadMatchAndStart(row.match_id);
+        await this.loadMatchAndStart(match.id);
       }
     }, 2000);
   }
