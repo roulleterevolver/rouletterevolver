@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Supabase Edge Function: coin-pick
 //
 // First-come-first-serve coin call. The FIRST player to submit a side claims
@@ -57,18 +58,34 @@ serve(async (req: Request) => {
 
     let firstPickBy: string;
     let firstPick: boolean;
+    let newState: any;
     if (claimed) {
       firstPickBy = player_id;
       firstPick = pick;
+      
+      const otherOfFirst = firstPickBy === match.player1_id ? match.player2_id : match.player1_id;
+      const winnerPlayer = firstPick === coinResult ? firstPickBy : otherOfFirst;
+      const firstTurn = winnerPlayer === match.player1_id ? "player1" : "player2";
+
+      newState = {
+        ...match.state,
+        activeParticipant: firstTurn === "player1" ? "PLAYER" : "AI",
+      };
+      
+      await supabase
+        .from("matches")
+        .update({ first_turn: firstTurn, state: newState })
+        .eq("id", match_id);
     } else {
-      // Someone already picked — reload to read their claim.
+      // Someone already picked — reload to read their claim and the new state.
       const { data: m2 } = await supabase
         .from("matches")
-        .select("coin_pick_by, coin_pick")
+        .select("coin_pick_by, coin_pick, state")
         .eq("id", match_id)
         .single();
       firstPickBy = m2?.coin_pick_by ?? match.player1_id;
       firstPick = m2?.coin_pick ?? true;
+      newState = m2?.state ?? match.state;
     }
 
     // This player's EFFECTIVE side (opposite of the claimer if they weren't first).
@@ -80,24 +97,13 @@ serve(async (req: Request) => {
     const winnerPlayer = firstPick === coinResult ? firstPickBy : otherOfFirst;
     const firstTurn = winnerPlayer === match.player1_id ? "player1" : "player2";
 
-    // The claimer commits the authoritative turn order + state once.
-    if (claimed) {
-      const newState = {
-        ...match.state,
-        activeParticipant: firstTurn === "player1" ? "PLAYER" : "AI",
-      };
-      await supabase
-        .from("matches")
-        .update({ first_turn: firstTurn, state: newState })
-        .eq("id", match_id);
-    }
-
     return new Response(
       JSON.stringify({
         my_pick: myPick,
         coin_result: coinResult,
         first_turn: firstTurn,
         locked_by_you: firstPickBy === player_id,
+        state: newState,
       }),
       { status: 200, headers: corsHeaders },
     );

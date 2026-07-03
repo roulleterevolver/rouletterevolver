@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Supabase Edge Function: submit-action
 //
 // Called by the client when a player takes an action. Validates the turn,

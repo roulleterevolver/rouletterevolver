@@ -311,7 +311,8 @@ export class Renderer3D implements IRenderer {
   private gunDropAt = 0; // when to lower the gun back into the circle
   private dealerMarker: THREE.Group | undefined;
   private selfMarker: THREE.Group | undefined;
-  private spinToken: THREE.Group | undefined;
+  private playerSpinToken: THREE.Group | null = null;
+  private dealerSpinToken: THREE.Group | null = null;
   // Live affordance flags, refreshed every render(state).
   private localParticipant: "PLAYER" | "AI" = "PLAYER";
   // When true (player2 / the "AI" seat in multiplayer), the ENTIRE camera is
@@ -505,9 +506,9 @@ export class Renderer3D implements IRenderer {
       hit: (): void => this.onGunClick(),
     });
 
-    // --- HP candles (compact rows near each figure's edge) ---------------
-    this.dealerHp = this.spawnHp(scene, -HP_ROW_Z);
-    this.playerHp = this.spawnHp(scene, HP_ROW_Z);
+    // Player candles on left (-2.4, going left), Dealer on right (2.4, going right)
+    this.dealerHp = this.spawnHp(scene, 2.4, -HP_ROW_Z, 1);
+    this.playerHp = this.spawnHp(scene, -2.4, HP_ROW_Z, -1);
 
     // --- Six item boxes per side (the on-table item belt; == max items) --
     this.dealerSlots = this.spawnSlots(scene, -ITEM_ROW_Z, true);
@@ -529,25 +530,29 @@ export class Renderer3D implements IRenderer {
     dealerMarker.visible = false;
     scene.add(dealerMarker);
     this.dealerMarker = dealerMarker;
-    this.interactives.push({ root: dealerMarker, hit: (): void => this.onTargetClick("AI") });
+    this.interactives.push({ root: dealerMarker, hit: (): void => this.onTargetClick(this.localParticipant === "PLAYER" ? "AI" : "PLAYER") });
     // The Dealer's body is also a valid click target while aiming.
-    this.interactives.push({ root: dealer.group, hit: (): void => this.onTargetClick("AI") });
+    this.interactives.push({ root: dealer.group, hit: (): void => this.onTargetClick(this.localParticipant === "PLAYER" ? "AI" : "PLAYER") });
 
     const selfMarker = makeTargetMarker(0xd9a441);
-    selfMarker.position.set(0, SURFACE_Y + 0.7, ITEM_ROW_Z + 1.4);
+    selfMarker.position.set(0, 6.9, PLAYER_Z - 0.4);
     selfMarker.visible = false;
     scene.add(selfMarker);
     this.selfMarker = selfMarker;
-    this.interactives.push({ root: selfMarker, hit: (): void => this.onTargetClick("PLAYER") });
+    this.interactives.push({ root: selfMarker, hit: (): void => this.onTargetClick(this.localParticipant) });
 
     // --- Spin control: a small engraved disk on the wood rail (NOT a felt
     // item) — only shown when a spin is actually allowed.
-    const spinToken = makeSpinToken();
-    spinToken.position.set(TABLE.width / 2 - 0.2, SURFACE_Y + 0.04, HP_ROW_Z);
-    spinToken.visible = false;
-    scene.add(spinToken);
-    this.spinToken = spinToken;
-    this.interactives.push({ root: spinToken, hit: (): void => this.onSpinClick() });
+      // Spin tokens pushed far out to the extreme edge
+      this.playerSpinToken = makeSpinToken();
+      this.playerSpinToken.position.set(4.7, SURFACE_Y, HP_ROW_Z); // Player's far right edge
+      scene.add(this.playerSpinToken);
+      this.interactives.push({ root: this.playerSpinToken, hit: (): void => this.onSpinClick("PLAYER") });
+
+      this.dealerSpinToken = makeSpinToken();
+      this.dealerSpinToken.position.set(-4.7, SURFACE_Y, -HP_ROW_Z); // Dealer's far right edge
+      scene.add(this.dealerSpinToken);
+      this.interactives.push({ root: this.dealerSpinToken, hit: (): void => this.onSpinClick("AI") });
 
     // --- Shell tokens revealed at round start, then flipped into the table
     const shells = new THREE.Group();
@@ -614,14 +619,14 @@ export class Renderer3D implements IRenderer {
   }
 
   /** Build a row of up to 5 HP skull markers on the table. */
-  private spawnHp(scene: THREE.Scene, z: number): HpMarker[] {
+  private spawnHp(scene: THREE.Scene, startX: number, z: number, dirX: number): HpMarker[] {
     const out: HpMarker[] = [];
     const spacing = 0.44;
     const max = 5;
 
     for (let i = 0; i < max; i++) {
       const m = buildHpMarker();
-      m.group.position.set(HP_X - i * spacing, SURFACE_Y, z);
+      m.group.position.set(startX + dirX * i * spacing, SURFACE_Y, z);
       m.group.visible = false;
       scene.add(m.group);
       out.push(m);
@@ -641,6 +646,39 @@ export class Renderer3D implements IRenderer {
       out.push(slot);
     }
     return out;
+  }
+
+  /** Reset internal state for a new match. */
+  reset(): void {
+    this.matchOver = false;
+    this.shownHp = { player: -1, dealer: -1 };
+    this.lastActive = null;
+    this.roundsRemaining = 3;
+    this.playerItems = [];
+    this.dealerItems = [];
+    this.candleBlow = null;
+    this.playerHp = this.playerHp.map((m) => {
+      m.group.visible = false;
+      m.flame.visible = true;
+      m.wax.scale.y = 1;
+      m.wax.position.y = 0.3;
+      return m;
+    });
+    this.dealerHp = this.dealerHp.map((m) => {
+      m.group.visible = false;
+      m.flame.visible = true;
+      m.wax.scale.y = 1;
+      m.wax.position.y = 0.3;
+      return m;
+    });
+    this.playerSlots.forEach(s => {
+      s.group.visible = false;
+      clearGroup(s.contents);
+    });
+    this.dealerSlots.forEach(s => {
+      s.group.visible = false;
+      clearGroup(s.contents);
+    });
   }
 
   render(state: GameState): void {
@@ -678,6 +716,11 @@ export class Renderer3D implements IRenderer {
 
     this.updateSlots(this.playerSlots, vm.player.items, false);
     this.updateSlots(this.dealerSlots, vm.dealer.items, true);
+
+    // Hide power-up slots entirely in the first round (Round 1)
+    const showSlots = state.roundSetIndex > 0;
+    this.playerSlots.forEach((s) => (s.group.visible = showSlots));
+    this.dealerSlots.forEach((s) => (s.group.visible = showSlots));
   }
 
   /** Show/hide the aim markers; the spin disk shows only when usable. */
@@ -685,7 +728,14 @@ export class Renderer3D implements IRenderer {
     const showAim = this.aiming && !this.firing;
     if (this.dealerMarker) this.dealerMarker.visible = showAim;
     if (this.selfMarker) this.selfMarker.visible = showAim;
-    if (this.spinToken) this.spinToken.visible = this.spinAllowed && !this.aiming;
+    const hideTableItems = this.aiming;
+    // Only show the spin token that belongs to your perspective
+    if (this.playerSpinToken) {
+      this.playerSpinToken.visible = !hideTableItems && this.localParticipant === "PLAYER";
+    }
+    if (this.dealerSpinToken) {
+      this.dealerSpinToken.visible = !hideTableItems && this.localParticipant === "AI";
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -776,7 +826,7 @@ export class Renderer3D implements IRenderer {
     if (!this.playerTurn || this.matchOver || this.roundsRemaining === 0) return;
     this.onInteract();
     this.aiming = !this.aiming;
-    this.aimTarget = "AI";
+    this.aimTarget = this.localParticipant === "PLAYER" ? "AI" : "PLAYER";
     this.firing = false;
     if (this.aiming) this.onGunRaise();
     this.updateMarkers();
@@ -794,8 +844,8 @@ export class Renderer3D implements IRenderer {
     this.onAction({ kind: "SHOOT", target: engineTarget });
   }
 
-  private onSpinClick(): void {
-    if (!this.spinAllowed) return;
+  private onSpinClick(side: "PLAYER" | "AI"): void {
+    if (!this.spinAllowed || side !== this.localParticipant) return;
     this.onInteract();
     this.aiming = false;
     this.updateMarkers();
@@ -1179,16 +1229,26 @@ export class Renderer3D implements IRenderer {
     ]);
   }
 
-  /** Reveal the Dealer on any shot (you only see the enemy during gunfire). */
+  /** Reveal the opponent, or show a self-flinch when the local player is shot. */
   private cutToShot(target: ParticipantId, live: boolean): void {
     const shots: CamShot[] = [];
-    // Push in on the hooded Dealer across the table — close on the grin/eyes.
-    shots.push({
-      pos: new THREE.Vector3(0.4, 5.9, DEALER_Z + 4.2),
-      look: new THREE.Vector3(0, 5.4, DEALER_Z + 0.4),
-      holdMs: live ? 1600 : 1100,
-      lerp: live ? 0.05 : 0.07,
-    });
+    if (target === this.localParticipant) {
+      // Self camera view: sharply look up / flinch, simulating being hit.
+      shots.push({
+        pos: new THREE.Vector3(0, 5.0, PLAYER_Z + 1.0),
+        look: new THREE.Vector3(0, 10.0, 0), // Looking sharply up and forward
+        holdMs: live ? 1600 : 1100,
+        lerp: live ? 0.1 : 0.15,
+      });
+    } else {
+      // Push in on the hooded enemy across the table — close on the grin/eyes.
+      shots.push({
+        pos: new THREE.Vector3(0.4, 5.9, DEALER_Z + 4.2),
+        look: new THREE.Vector3(0, 5.4, DEALER_Z + 0.4),
+        holdMs: live ? 1600 : 1100,
+        lerp: live ? 0.05 : 0.07,
+      });
+    }
     if (live) shots.push(this.candleShot(target));
     this.playSequence(shots);
   }
@@ -1196,14 +1256,25 @@ export class Renderer3D implements IRenderer {
   /** A close shot of the exact candle that's about to blow out, framed from the
    *  near side so the dealer's body never blocks it. */
   private candleShot(target: ParticipantId): CamShot {
-    const z = target === "AI" ? -HP_ROW_Z : HP_ROW_Z;
-    // Aim at the specific dying candle when we know which one it is.
+    // Determine the unmirrored physical Z coordinate of the target's candles
+    const unmirroredZ = target === "AI" ? -HP_ROW_Z : HP_ROW_Z;
+    // Because mirrorCam flips the Z coordinate at the very end of the pipeline, 
+    // we must pre-flip our target coordinates so they land on the correct physical meshes!
+    const finalZ = this.mirrorCam ? -unmirroredZ : unmirroredZ;
+    
+    // Determine which candle in the row is dying
     const spacing = 0.44;
     const idx = this.candleBlow ? this.candleBlow.index : 2;
-    const cx = HP_X - idx * spacing;
+    const startX = target === "AI" ? 2.4 : -2.4;
+    const dirX = target === "AI" ? 1 : -1;
+    const cx = startX + dirX * idx * spacing;
+    
+    // We also flip the camera Z-offset so we frame it from the near side correctly.
+    const zOffset = this.mirrorCam ? -1.7 : 1.7;
+
     return {
-      pos: new THREE.Vector3(cx + 0.2, SURFACE_Y + 0.95, z + 1.7),
-      look: new THREE.Vector3(cx, SURFACE_Y + 0.55, z),
+      pos: new THREE.Vector3(cx + 0.2, SURFACE_Y + 0.95, finalZ + zOffset),
+      look: new THREE.Vector3(cx, SURFACE_Y + 0.55, finalZ),
       holdMs: 2100,
       lerp: 0.08,
     };
@@ -1253,7 +1324,7 @@ export class Renderer3D implements IRenderer {
 
   /** Medium shot framing whoever used an item. */
   private cutToParticipant(p: ParticipantId, holdMs: number): void {
-    if (p === "AI") {
+    if (p !== this.localParticipant) {
       this.playSequence([
         {
           pos: new THREE.Vector3(3.2, 5.6, 2.6),
@@ -1339,7 +1410,7 @@ export class Renderer3D implements IRenderer {
         {
           pos: new THREE.Vector3(coinX + 0.5, SURFACE_Y + 3.8, 3.2),
           look: new THREE.Vector3(coinX, SURFACE_Y + 0.5, coinZ),
-          holdMs: 12000,
+          holdMs: 25000,
           lerp: 0.08,
         },
       ]);
@@ -1352,7 +1423,7 @@ export class Renderer3D implements IRenderer {
       choiceEl.style.cssText =
         "position:fixed;bottom:18%;left:50%;transform:translateX(-50%);" +
         "display:flex;gap:30px;z-index:9999;pointer-events:auto;";
-      const makeBtn = (label: string, val: boolean): HTMLButtonElement => {
+      const makeBtn = (label: string): HTMLButtonElement => {
         const btn = document.createElement("button");
         btn.textContent = label;
         btn.style.cssText =
@@ -1362,48 +1433,76 @@ export class Renderer3D implements IRenderer {
           "text-transform:uppercase;transition:border-color .15s,color .15s;";
         btn.addEventListener("mouseenter", () => { btn.style.borderColor = "#fff"; btn.style.color = "#fff"; });
         btn.addEventListener("mouseleave", () => { btn.style.borderColor = "#d4a843"; btn.style.color = "#d9cdb4"; });
-        btn.addEventListener("click", () => { void finalize(val); });
         return btn;
       };
-      const headsBtn = makeBtn("HEADS", true);
-      const tailsBtn = makeBtn("TAILS", false);
+      
+      const headsBtn = makeBtn("HEADS");
+      const tailsBtn = makeBtn("TAILS");
       choiceEl.appendChild(headsBtn);
       choiceEl.appendChild(tailsBtn);
       document.body.appendChild(choiceEl);
 
-      // Timer: 5 seconds to choose, then auto-pick heads.
+      // Timer: 10 seconds to choose, then auto-pick heads.
       const timerEl = document.createElement("div");
       timerEl.style.cssText =
         "position:fixed;bottom:28%;left:50%;transform:translateX(-50%);" +
         "font-family:'Courier New',monospace;font-size:14px;letter-spacing:3px;" +
         "color:#888;z-index:9999;pointer-events:none;text-align:center;";
-      timerEl.textContent = "CHOOSE: 5";
+      timerEl.textContent = "CHOOSE: 10";
       document.body.appendChild(timerEl);
 
-      // Commit a pick exactly once (from a click, a timeout, or a forced lock).
-      const finalize = async (pick: boolean): Promise<void> => {
+      // Lock in a pick. The coin flip will wait for the timer.
+      const lockPick = async (pick: boolean): Promise<void> => {
         if (decided) return;
         decided = true;
-        clearInterval(interval);
-        if (pollInt !== null) clearInterval(pollInt);
+        
+        // Highlight chosen, disable both
+        headsBtn.style.opacity = pick ? "1" : "0.35";
+        tailsBtn.style.opacity = pick ? "0.35" : "1";
+        headsBtn.disabled = true;
+        tailsBtn.disabled = true;
+        headsBtn.style.borderColor = pick ? "#fff" : "#555";
+        tailsBtn.style.borderColor = pick ? "#555" : "#fff";
+
         if (choice) {
           const res = await choice.submitPick(pick);
+          if (res.myPick !== pick) {
+            timerEl.style.color = "#cc3333";
+            timerEl.style.fontSize = "16px";
+            timerEl.textContent = `OPPONENT FASTER! FORCED TO ${res.myPick ? "HEADS" : "TAILS"} (WAITING)`;
+          } else {
+            timerEl.textContent = "WAITING FOR TIMER...";
+          }
           playerPick = res.myPick;
           youFirstResult = res.youFirst;
         } else {
           playerPick = pick;
           youFirstResult = pick === result;
+          timerEl.textContent = "WAITING FOR TIMER...";
         }
-        choiceEl.remove();
-        timerEl.remove();
-        doFlip();
       };
 
-      let countdown = 5;
+      headsBtn.addEventListener("click", () => { void lockPick(true); });
+      tailsBtn.addEventListener("click", () => { void lockPick(false); });
+
+      let countdown = 10;
       const interval = setInterval(() => {
         countdown--;
-        if (!decided) timerEl.textContent = `CHOOSE: ${countdown}`;
-        if (countdown <= 0) void finalize(true); // default heads
+        if (!decided) {
+          timerEl.textContent = `CHOOSE: ${countdown}`;
+        } else if (timerEl.textContent.includes("WAITING FOR TIMER")) {
+          timerEl.textContent = `WAITING FOR TIMER... ${countdown}`;
+        }
+        
+        if (countdown <= 0) {
+          clearInterval(interval);
+          if (pollInt !== null) clearInterval(pollInt);
+          if (!decided) void lockPick(true); // default heads
+          
+          choiceEl.remove();
+          timerEl.remove();
+          doFlip();
+        }
       }, 1000);
 
       // Multiplayer: watch for the opponent claiming a side first, then lock
@@ -1420,7 +1519,8 @@ export class Renderer3D implements IRenderer {
           takenBtn.style.borderColor = "#555";
           takenBtn.disabled = true;
           timerEl.textContent = `OPPONENT CHOSE ${forced ? "TAILS" : "HEADS"} — YOU GET ${forced ? "HEADS" : "TAILS"}`;
-          setTimeout(() => { void finalize(forced); }, 1100);
+          // Give the user an extra second to read this text before locking.
+          setTimeout(() => { void lockPick(forced); }, 2200);
         }, 600);
       }
 
@@ -1502,6 +1602,23 @@ export class Renderer3D implements IRenderer {
     // (We must NOT mutate the shared CAM_FP constant: it double-flips and only
     // covers the idle base shot.)
     this.mirrorCam = p === "AI";
+
+    // Ensure the respin token is physically on the local player's side of the table.
+    // The physical spin tokens are statically placed; we just need to know which one is ours.
+
+    // Ensure the markers are positioned correctly based on the camera orientation
+    if (this.dealerMarker && this.selfMarker) {
+      if (p === "AI") {
+        // Player 2's camera is mirrored (at DEALER_Z). Opponent is at PLAYER_Z.
+        this.dealerMarker.position.z = PLAYER_Z - 0.4;
+        this.selfMarker.position.z = DEALER_Z + 0.4;
+      } else {
+        // Player 1's camera is at PLAYER_Z. Opponent is at DEALER_Z.
+        this.dealerMarker.position.z = DEALER_Z + 0.4;
+        this.selfMarker.position.z = PLAYER_Z - 0.4;
+      }
+    }
+
     this.configureMultiplayerFigures();
   }
 
@@ -1514,24 +1631,34 @@ export class Renderer3D implements IRenderer {
    *     their own), reveal the hooded player figure across the table as the
    *     opponent, and reflect the first-person hands onto their side.
    */
+  private opponentDealerSwapped = false;
+
   private configureMultiplayerFigures(): void {
     if (!this.scene) return;
     if (this.localParticipant === "AI") {
       if (this.dealer) this.dealer.group.visible = false; // our own body → hidden
-      if (this.player) this.player.group.visible = true;  // opponent (hooded)
+      
+      // We want to see the Dealer model as the opponent.
+      if (this.player && !this.opponentDealerSwapped) {
+         this.scene.remove(this.player.group);
+         disposeTree(this.player.group); // prevent memory leak
+
+         const opp = buildDealer();
+         opp.group.position.set(0, 0, PLAYER_Z);
+         opp.group.rotation.y = Math.PI; // Face towards us
+         this.scene.add(opp.group);
+         this.player = opp;
+         this.interactives.push({ root: opp.group, hit: (): void => this.onTargetClick("PLAYER") });
+         
+         this.opponentDealerSwapped = true;
+      }
+      
       if (this.handsGroup) this.handsGroup.rotation.y = Math.PI; // hands to our side
     } else {
-      // Swap the dealer model for a hooded player figure so the opponent looks
-      // identical to us. The old dealer group is removed; its stale interactive
-      // entry is harmless (the raycaster ignores objects not in the scene).
-      if (this.dealer) {
-        this.scene.remove(this.dealer.group);
-        const opp = buildPlayer();
-        opp.group.position.set(0, 0, DEALER_Z); // faces +z toward us by default
-        this.scene.add(opp.group);
-        this.dealer = opp;
-        this.interactives.push({ root: opp.group, hit: (): void => this.onTargetClick("AI") });
-      }
+      // Player 1 sees the Dealer at DEALER_Z by default.
+      // Make sure our own body is hidden.
+      if (this.player) this.player.group.visible = false;
+      // We do NOT swap the dealer model for a hooded figure here anymore.
     }
   }
 
@@ -1781,7 +1908,7 @@ export class Renderer3D implements IRenderer {
 
       if (a > 0.001) {
         // Player Aiming
-        if (this.aimTarget === "PLAYER") {
+        if (this.aimTarget === this.localParticipant) {
           targetPy += a * 2.0;
           targetPz += a * 1.4;
           targetRx = a * 0.7 + recoilPitch;
@@ -2213,19 +2340,25 @@ export class Renderer3D implements IRenderer {
     if (this.dealerMarker?.visible) this.dealerMarker.scale.setScalar(pulse);
     if (this.selfMarker?.visible) this.selfMarker.scale.setScalar(pulse);
     
-    // Spin token stays static and dims, lighting up when hovered.
-    if (this.spinToken?.visible) {
-      this.spinToken.scale.setScalar(1.0);
-      const isHovered = this.hoverRoot === this.spinToken;
-      this.spinToken.children.forEach(child => {
-        if (child instanceof THREE.Mesh) {
-          const mat = child.material as THREE.MeshStandardMaterial;
-          if (mat.emissive && mat.emissive.getHex() > 0) {
-            mat.emissiveIntensity = isHovered ? 2.5 : 0.2;
+    // Spin tokens stay static and dim, lighting up when hovered.
+    const activeSpinTokens = this.localParticipant === "PLAYER" 
+      ? [this.playerSpinToken, this.dealerSpinToken] 
+      : [this.playerSpinToken, this.dealerSpinToken]; 
+      
+    activeSpinTokens.forEach(token => {
+      if (token?.visible) {
+        token.scale.setScalar(1.0);
+        const isHovered = this.hoverRoot === token;
+        token.children.forEach(child => {
+          if (child instanceof THREE.Mesh) {
+            const mat = child.material as THREE.MeshStandardMaterial;
+            if (mat.emissive && mat.emissive.getHex() > 0) {
+              mat.emissiveIntensity = isHovered ? 2.5 : 0.2;
+            }
           }
-        }
-      });
-    }
+        });
+      }
+    });
 
     // Advance the shot queue; when it empties, return to the FP base shot.
     if (this.camFocused && this.now() >= this.camHoldUntil) {

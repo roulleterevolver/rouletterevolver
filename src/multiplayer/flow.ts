@@ -33,6 +33,8 @@ export function startMultiplayerFlow(deps: MultiplayerFlowDeps): {
   let cancelled = false;
   let matchStarted = false;
 
+  caption.enqueue("SEARCHING", "Looking for an opponent...");
+
   // Turn-timer readout (top-right), only visible in the final 10 seconds.
   const timerEl = document.createElement("div");
   timerEl.style.cssText =
@@ -44,13 +46,14 @@ export function startMultiplayerFlow(deps: MultiplayerFlowDeps): {
   const controller = new MultiplayerGameController({
     playerId,
 
-    onMatched: async ({ youAre, coinResult }) => {
+    onMatched: async ({ matchId, youAre, coinResult }) => {
       if (cancelled) return;
+      (window as any).__mpMatchId = matchId;
 
       // Second player controls the "AI" seat: mirror camera + swap targets.
       renderer.setLocalParticipant(youAre === "player1" ? "PLAYER" : "AI");
 
-      caption.enqueue("OPPONENT FOUND", "The table awaits.");
+      caption.enqueue("MATCH ACCEPTED", "Flipping coin for first turn...");
       await wait(2000);
       if (cancelled) return;
 

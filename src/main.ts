@@ -52,6 +52,14 @@ function resolveRng(): RNG {
 
 /** Get or create a persistent player ID for this browser session. */
 function getOrCreatePlayerId(): string {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has("new_id")) {
+    sessionStorage.removeItem("rr_player_id");
+    urlParams.delete("new_id");
+    const newUrl = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "");
+    window.history.replaceState({}, document.title, newUrl);
+  }
+
   let id = sessionStorage.getItem("rr_player_id");
   if (!id) {
     id = crypto.randomUUID();
@@ -379,6 +387,8 @@ async function bootstrap(): Promise<void> {
         onInteract();
         homeOverlay.classList.add("rr-hidden");
         renderer.transitionToGame(async () => {
+          renderer.reset(); // Clear state leak from previous matches
+          
           // Pick a bet first.
           const bet = await renderer.showBetChips();
           if (bet < 0) return;
@@ -409,6 +419,20 @@ async function bootstrap(): Promise<void> {
         });
       });
     }
+
+    // Add a beforeunload listener to gracefully abandon a multiplayer match
+    // if the user closes the tab or reloads mid-game.
+    window.addEventListener("beforeunload", () => {
+      const matchId = (window as any).__mpMatchId;
+      const playerId = getOrCreatePlayerId();
+      if (matchId && playerId) {
+        // Use a beacon so the request fires even as the tab closes.
+        const url = `${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/abandon-match`;
+        const data = JSON.stringify({ match_id: matchId, player_id: playerId });
+        // fallback to navigator.sendBeacon
+        navigator.sendBeacon(url, data);
+      }
+    });
   }
 }
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Supabase Edge Function: join-queue
 //
 // Called when a player picks a bet amount. Inserts them into the queue and
@@ -51,6 +52,15 @@ serve(async (req: Request) => {
       await supabase.from("players").insert({ id: player_id, display_name: "PLAYER", balance: 100000 });
     }
 
+    // --- TEMPORARY FIX: WIPE STALE MATCHES ---
+    // Since matches were getting stuck in "active" before the abandonment fix,
+    // we automatically clear any active matches for this player before they queue up again.
+    await supabase.from("matches")
+      .delete()
+      .eq("status", "active")
+      .or(`player1_id.eq.${player_id},player2_id.eq.${player_id}`);
+    // -----------------------------------------
+
     // Insert into queue (skip balance check for now).
     const { data: queueEntry } = await supabase
       .from("queue")
@@ -62,12 +72,13 @@ serve(async (req: Request) => {
     const { data: opponent } = await supabase
       .from("queue")
       .select("*")
-      .eq("bet_amount", bet_amount)
       .eq("status", "waiting")
+      .eq("bet_amount", bet_amount)
+      .neq("id", queueEntry!.id)
       .neq("player_id", player_id)
       .order("created_at", { ascending: true })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!opponent) {
       // No match yet — wait for someone else to join.
@@ -87,6 +98,8 @@ serve(async (req: Request) => {
     const initialState = {
       ...matchResult.state,
       activeParticipant: coinFlip === "player1" ? "PLAYER" : "AI",
+      player1_accepted: false,
+      player2_accepted: false,
     };
 
     const deadline = new Date(Date.now() + TURN_TIMEOUT_SEC * 1000).toISOString();
@@ -123,19 +136,33 @@ serve(async (req: Request) => {
     // Deduct opponent's bet too (skipped for testing).
     // await supabase.rpc("deduct_balance", { p_id: opponent.player_id, amount: bet_amount });
 
-    // Notify both players via Realtime.
-    await supabase.channel(`queue:${opponent.player_id}`).send({
-      type: "broadcast",
-      event: "matched",
-      payload: { match_id: match.id, opponent_id: player_id, you_are: "player1", first_turn: coinFlip },
-    });
-    await supabase.channel(`queue:${player_id}`).send({
-      type: "broadcast",
-      event: "matched",
-      payload: { match_id: match.id, opponent_id: opponent.player_id, you_are: "player2", first_turn: coinFlip },
-    });
+    // Notify both players via Realtime. Must wait for subscribe to finish before sending.
+    const sendBroadcast = async (channelId: string, payload: any) => {
+      const channel = supabase.channel(channelId);
+      return new Promise<void>((resolve) => {
+        channel.subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            await channel.send({
+              type: "broadcast",
+              event: "match_pending",
+              payload,
+            });
+            supabase.removeChannel(channel);
+            resolve();
+          }
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            resolve(); // ignore errors to not block matchmaking
+          }
+        });
+      });
+    };
 
-    return new Response(JSON.stringify({ status: "matched", match_id: match.id, first_turn: coinFlip }), { status: 200, headers: corsHeaders });
+    await Promise.all([
+      sendBroadcast(`queue:${opponent.player_id}`, { match_id: match.id, opponent_id: player_id, you_are: "player1", first_turn: coinFlip }),
+      sendBroadcast(`queue:${player_id}`, { match_id: match.id, opponent_id: opponent.player_id, you_are: "player2", first_turn: coinFlip })
+    ]);
+
+    return new Response(JSON.stringify({ status: "pending", match_id: match.id, first_turn: coinFlip }), { status: 200, headers: corsHeaders });
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: corsHeaders });
   }

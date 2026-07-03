@@ -35,7 +35,6 @@ export interface MultiplayerConfig {
   onEvents: (events: GameEvent[]) => void;
   /** Called each second with the active turn's remaining time. */
   onTimerTick: (secondsLeft: number) => void;
-  /** Called once when the match finishes. `youWon` reflects THIS client. */
   onMatchOver: (youWon: boolean) => void;
 }
 
@@ -83,36 +82,66 @@ export class MultiplayerClient {
       return;
     }
 
+    if (data?.status === "pending" && data.match_id) {
+      await this.loadMatch(data.match_id);
+      return;
+    }
+
     // Not matched yet — poll for our queue row flipping to "matched", or for a
     // match that lists us as a participant.
     const queueId = data?.queue_id as string | undefined;
+    const channel = this.supabase.channel(`queue:${this.playerId}`);
+    if (channel) {
+      channel.on("broadcast", { event: "match_pending" }, (payload) => {
+        this.clearQueuePoll();
+        this.loadMatch(payload.payload.match_id);
+      });
+
+      channel.on("broadcast", { event: "match_cancelled" }, () => {
+        this.clearQueuePoll();
+      });
+
+      channel.on("broadcast", { event: "matched" }, (payload) => {
+        // We found a match!
+        const data = payload.payload;
+        this.clearQueuePoll();
+        this.loadMatch(data.match_id);
+      });
+      channel.subscribe();
+    }
+
     this.queuePollTimer = setInterval(async () => {
       if (this.destroyed) return;
 
+      // 1. Check if we're in an active match
+      const { data: match } = await this.supabase
+        .from("matches")
+        .select("id, state")
+        .or(`player1_id.eq.${this.playerId},player2_id.eq.${this.playerId}`)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+        
+      if (match?.id) {
+        this.clearQueuePoll();
+        await this.loadMatch(match.id);
+        return;
+      }
+
+      // 2. Fallback to check queue status
       if (queueId) {
         const { data: row } = await this.supabase
           .from("queue")
           .select("status, match_id")
           .eq("id", queueId)
           .maybeSingle();
+          
         if (row?.status === "matched" && row.match_id) {
           this.clearQueuePoll();
           await this.loadMatch(row.match_id);
-          return;
         }
       }
 
-      const { data: match } = await this.supabase
-        .from("matches")
-        .select("id")
-        .or(`player1_id.eq.${this.playerId},player2_id.eq.${this.playerId}`)
-        .eq("status", "active")
-        .limit(1)
-        .maybeSingle();
-      if (match?.id) {
-        this.clearQueuePoll();
-        await this.loadMatch(match.id);
-      }
     }, QUEUE_POLL_MS);
   }
 
@@ -155,7 +184,7 @@ export class MultiplayerClient {
    * Resolves with THIS client's effective pick + the shared coin result +
    * whether this client goes first.
    */
-  async submitCoinPick(pick: boolean): Promise<{ myPick: boolean; coinResult: boolean; youFirst: boolean }> {
+  async submitCoinPick(pick: boolean): Promise<{ myPick: boolean; coinResult: boolean; youFirst: boolean; newState?: any }> {
     if (!this.matchId) return { myPick: pick, coinResult: pick, youFirst: true };
     const { data, error } = await this.supabase.functions.invoke("coin-pick", {
       body: { match_id: this.matchId, player_id: this.playerId, pick },
@@ -168,6 +197,7 @@ export class MultiplayerClient {
       myPick: data.my_pick,
       coinResult: data.coin_result,
       youFirst: data.first_turn === this.youAre,
+      newState: data.state,
     };
   }
 

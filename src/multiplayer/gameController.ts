@@ -32,6 +32,7 @@ export interface MultiplayerControllerOptions {
    * finishes to reveal the board.
    */
   onMatched: (info: {
+    matchId: string;
     youAre: "player1" | "player2";
     youFirst: boolean;
     coinResult: boolean;
@@ -64,7 +65,7 @@ export class MultiplayerGameController implements PresentationController {
         this.initialEvents = data.initialEvents;
         this.state = data.initialState;
         const youFirst = data.firstTurn === data.youAre;
-        opts.onMatched({ youAre: data.youAre, youFirst, coinResult: data.coinResult });
+        opts.onMatched({ matchId: data.matchId, youAre: data.youAre, youFirst, coinResult: data.coinResult });
       },
 
       onStateChange: (state) => {
@@ -89,8 +90,13 @@ export class MultiplayerGameController implements PresentationController {
   }
 
   /** Submit this client's heads/tails call (first-come-first-serve). */
-  submitCoinPick(pick: boolean): Promise<{ myPick: boolean; coinResult: boolean; youFirst: boolean }> {
-    return this.client.submitCoinPick(pick);
+  async submitCoinPick(pick: boolean): Promise<{ myPick: boolean; coinResult: boolean; youFirst: boolean }> {
+    const res = await this.client.submitCoinPick(pick);
+    if (res.newState && this.initialState) {
+      this.initialState = res.newState;
+      this.state = res.newState;
+    }
+    return res;
   }
 
   /** Poll whether the opponent already claimed a side (returns our forced side). */
