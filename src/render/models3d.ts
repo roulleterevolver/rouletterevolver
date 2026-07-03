@@ -183,12 +183,24 @@ function makeGrungeTexture(
 export function buildRoom(): THREE.Group {
   const g = new THREE.Group();
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), matte(PAL.floor));
+  // A stained concrete floor — grimy, scratched, with old dried blood.
+  const floorMat = matte(PAL.floor);
+  const floorTex = makeGrungeTexture(PAL.floor, { blood: true, scratches: 90, grime: 9000 });
+  if (floorTex) {
+    floorTex.repeat.set(3, 3);
+    floorMat.map = floorTex;
+  }
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   g.add(floor);
 
   const wallMat = matte(PAL.wall);
+  const wallTex = makeGrungeTexture(PAL.wall, { scratches: 50, grime: 7000 });
+  if (wallTex) {
+    wallTex.repeat.set(3, 2);
+    wallMat.map = wallTex;
+  }
   const back = new THREE.Mesh(new THREE.PlaneGeometry(60, 30), wallMat);
   back.position.set(0, 15, -16);
   back.receiveShadow = true;
@@ -338,6 +350,8 @@ export interface FigureHandles {
   arm: THREE.Group;
   /** Resting rotation of the arm (radians, X) so the renderer can return to it. */
   armRestX: number;
+  /** Optional head group — the renderer tilts/twitches it for unease. */
+  head?: THREE.Group;
 }
 
 /** A creepy glowing crescent grin built from a partial torus arc. */
@@ -357,83 +371,206 @@ export function buildDealer(): FigureHandles {
   const group = new THREE.Group();
   const torso = new THREE.Group();
 
-  const suit = matte(0x0c0c0e, 0.85); // near-black suit
-  const flesh = matte(0xc8c0b8, 0.6); // corpse-pale skin
+  const suit = matte(0x0a090b, 0.92); // grave-black frock coat
+  const suitTrim = matte(0x1c1418, 0.85);
+  const bone = matte(0xd3c8b0, 0.8); // aged, yellowed bone mask
+  const boneDark = matte(0x9a8f78, 0.85);
+  const flesh = matte(0xb4ada0, 0.7); // corpse-grey skin
 
-  // Tall, thin body — unnervingly narrow
-  const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 4.2, 10), suit);
+  // Tall, tapering lower robe with a tattered hem.
+  const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 1.05, 4.2, 12), suit);
   lower.position.y = 2.1;
   group.add(lower);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + 0.3;
+    const flap = new THREE.Mesh(
+      new THREE.ConeGeometry(0.14 + Math.random() * 0.1, 0.5 + Math.random() * 0.45, 5),
+      suit,
+    );
+    flap.rotation.x = Math.PI; // point down
+    flap.position.set(Math.cos(a) * 0.92, 0.24, Math.sin(a) * 0.92);
+    group.add(flap);
+  }
 
-  // Narrow gaunt torso — angular, boxy silhouette (like a suit jacket on bones)
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.4, 0.8), suit);
+  // Gaunt, angular chest — a suit jacket hanging off bones.
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.3, 0.75), suit);
   chest.position.y = 4.4;
   torso.add(chest);
-  // Slight taper at the waist
-  const waist = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.6, 0.7), suit);
+  // Sunken sternum shadow down the front.
+  const sternum = new THREE.Mesh(new THREE.BoxGeometry(0.46, 1.7, 0.1), matte(0x040308, 0.98));
+  sternum.position.set(0, 4.45, 0.36);
+  torso.add(sternum);
+  // Faint rib bars pressing through the coat.
+  for (let i = 0; i < 4; i++) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.95 - i * 0.1, 0.045, 0.05), suitTrim);
+    rib.position.set(0, 5.15 - i * 0.28, 0.4);
+    torso.add(rib);
+  }
+  // Waist taper.
+  const waist = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.6, 0.68), suit);
   waist.position.y = 3.1;
   torso.add(waist);
 
-  // Thin neck — too long
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.8, 10), flesh);
-  neck.position.y = 5.7;
+  // Hunched, too-high shoulders.
+  const shoulderGeo = new THREE.BoxGeometry(0.78, 0.55, 0.82);
+  const shL = new THREE.Mesh(shoulderGeo, suit);
+  shL.position.set(-0.92, 5.5, 0);
+  shL.rotation.z = 0.35;
+  torso.add(shL);
+  const shR = new THREE.Mesh(shoulderGeo, suit);
+  shR.position.set(0.92, 5.5, 0);
+  shR.rotation.z = -0.35;
+  torso.add(shR);
+
+  // High mortician's collar wrapping the back of the neck.
+  const collar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.52, 0.68, 0.95, 12, 1, true, Math.PI / 2, Math.PI),
+    suitTrim,
+  );
+  collar.position.set(0, 5.85, -0.08);
+  torso.add(collar);
+
+  // Neck: thin, too long, craning slightly forward.
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, 1.15, 10), flesh);
+  neck.position.set(0, 5.95, 0.06);
+  neck.rotation.x = 0.1;
   torso.add(neck);
 
-  // The Head: creepy white mask, wide face
-  const maskMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.9, metalness: 0.1 });
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.8, 24, 24), maskMat);
-  head.scale.set(1.1, 1.2, 1.0);
-  head.position.set(0, 6.5, 0.2);
+  // -------------------------------------------------------------------
+  // The head — an elongated, cracked bone mask under a mortician's hat.
+  // Built inside its own group so the renderer can tilt/twitch it.
+  // -------------------------------------------------------------------
+  const head = new THREE.Group();
+  head.position.set(0, 6.62, 0.12);
   torso.add(head);
 
-  // Hollow dark eye sockets
-  const socketMat = matte(0x050505, 0.9);
-  const eyeMat = glow(0xffffff, 0.2);
-  const socketGeo = new THREE.BoxGeometry(0.4, 0.3, 0.2);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.72, 24, 20), bone);
+  skull.scale.set(0.95, 1.28, 0.9);
+  head.add(skull);
+
+  // Narrow jaw drawn down too far.
+  const jaw = new THREE.Mesh(new THREE.ConeGeometry(0.46, 0.85, 10), bone);
+  jaw.rotation.x = Math.PI;
+  jaw.position.set(0, -0.72, 0.14);
+  head.add(jaw);
+
+  // Sunken cheek hollows.
+  const hollowMat = matte(0x241d15, 0.95);
+  const cheekGeo = new THREE.SphereGeometry(0.19, 10, 8);
+  const cheekL = new THREE.Mesh(cheekGeo, hollowMat);
+  cheekL.position.set(-0.42, -0.2, 0.46);
+  cheekL.scale.set(0.9, 1.5, 0.45);
+  head.add(cheekL);
+  const cheekR = new THREE.Mesh(cheekGeo, hollowMat);
+  cheekR.position.set(0.42, -0.2, 0.46);
+  cheekR.scale.set(0.9, 1.5, 0.45);
+  head.add(cheekR);
+
+  // Heavy brow ridge shading the sockets.
+  const brow = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.16, 0.26), boneDark);
+  brow.position.set(0, 0.36, 0.56);
+  brow.rotation.x = 0.3;
+  head.add(brow);
+
+  // Deep black eye pits, angled inward for menace.
+  const socketMat = matte(0x030303, 0.98);
+  const socketGeo = new THREE.SphereGeometry(0.19, 12, 10);
   const skL = new THREE.Mesh(socketGeo, socketMat);
-  skL.position.set(-0.35, 6.7, 0.9);
-  skL.rotation.y = -0.1;
+  skL.position.set(-0.3, 0.14, 0.52);
+  skL.scale.set(1.05, 1.2, 0.55);
+  skL.rotation.z = -0.35;
+  head.add(skL);
   const skR = new THREE.Mesh(socketGeo, socketMat);
-  skR.position.set(0.35, 6.7, 0.9);
-  skR.rotation.y = 0.1;
-  torso.add(skL, skR);
+  skR.position.set(0.3, 0.14, 0.52);
+  skR.scale.set(1.05, 1.2, 0.55);
+  skR.rotation.z = 0.35;
+  head.add(skR);
 
-  // Tiny white pupils
-  const pupilGeo = new THREE.SphereGeometry(0.06, 8, 8);
+  // Pinprick ember pupils burning inside the pits.
+  const eyeMat = glow(0xff2212, 3.0);
+  const pupilGeo = new THREE.SphereGeometry(0.055, 8, 8);
   const eyeL = new THREE.Mesh(pupilGeo, eyeMat);
-  eyeL.position.set(-0.35, 6.7, 0.98);
+  eyeL.position.set(-0.3, 0.12, 0.62);
+  head.add(eyeL);
   const eyeR = new THREE.Mesh(pupilGeo, eyeMat);
-  eyeR.position.set(0.35, 6.7, 0.98);
-  torso.add(eyeL, eyeR);
+  eyeR.position.set(0.3, 0.12, 0.62);
+  head.add(eyeR);
 
-  // Wide unsettling grin
-  const mouthMat = glow(0x050505, 0.1);
-  const grinMesh = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.25, 0.2), mouthMat);
-  grinMesh.position.set(0, 6.1, 0.95);
-  torso.add(grinMesh);
+  // A grin far too wide: a glowing seam carved across the mask...
+  const mouthMat = glow(0xff4a1a, 1.2);
+  const seam = new THREE.Mesh(
+    new THREE.TorusGeometry(0.4, 0.035, 6, 24, Math.PI * 0.9),
+    mouthMat,
+  );
+  seam.rotation.z = Math.PI + (Math.PI - Math.PI * 0.9) / 2;
+  seam.position.set(0, -0.18, 0.56);
+  seam.scale.set(1.1, 0.55, 0.5);
+  head.add(seam);
 
-  // Blocky teeth
-  const toothMat = matte(0xdadada, 0.9);
-  for (let i = 0; i < 7; i++) {
-    const tx = -0.4 + (i / 6) * 0.8;
-    const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.05), toothMat);
-    tooth.position.set(tx, 6.1, 1.02);
-    torso.add(tooth);
+  // ...lined with crooked, irregular teeth (one gap left dark).
+  const toothMat = matte(0xc9bd9e, 0.85);
+  for (let i = 0; i < 9; i++) {
+    if (i === 2) continue; // missing tooth
+    const fx = i / 8 - 0.5;
+    const tx = fx * 0.78;
+    const ty = -0.36 - Math.abs(fx) * 0.16 + (i % 2 === 0 ? 0.02 : -0.02);
+    const th = 0.12 + ((i * 37) % 5) * 0.02;
+    const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.07, th, 0.05), toothMat);
+    tooth.position.set(tx, ty, 0.6 - Math.abs(fx) * 0.12);
+    tooth.rotation.z = fx * 0.5 + (i % 3 === 0 ? 0.12 : -0.08);
+    head.add(tooth);
   }
 
-  // Cold underlight
-  const faceLight = new THREE.PointLight(0xaaccff, 1.5, 3.0, 2);
-  faceLight.position.set(0, 5.5, 1.5);
-  torso.add(faceLight);
+  // Cracks spidering across the mask.
+  const crackMat = matte(0x14110d, 0.95);
+  const crackSpecs: Array<[number, number, number, number, number]> = [
+    // x, y, len, rotZ, rotX
+    [-0.18, 0.52, 0.5, 0.35, 0.25],
+    [0.3, 0.44, 0.38, -0.5, 0.2],
+    [-0.44, -0.05, 0.42, 1.15, 0.0],
+    [0.12, -0.5, 0.34, 0.2, -0.2],
+  ];
+  for (const [cx, cy, len, rz, rx] of crackSpecs) {
+    const crack = new THREE.Mesh(new THREE.BoxGeometry(0.022, len, 0.02), crackMat);
+    crack.position.set(cx, cy, 0.6);
+    crack.rotation.set(rx, 0, rz);
+    head.add(crack);
+  }
 
-  // Thin arms
-  const restArm = buildArm(suit, flesh);
+  // The mortician's top hat, tilted just slightly wrong.
+  const hatMat = matte(0x0b0a0c, 0.9);
+  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.92, 0.07, 20), hatMat);
+  hatBrim.position.set(0, 0.8, -0.04);
+  hatBrim.rotation.set(-0.08, 0, 0.05);
+  head.add(hatBrim);
+  const hatTop = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.57, 1.05, 18), hatMat);
+  hatTop.position.set(0, 1.32, -0.07);
+  hatTop.rotation.set(-0.08, 0, 0.05);
+  head.add(hatTop);
+  const hatBand = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.545, 0.585, 0.16, 18),
+    matte(0x4a0a0a, 0.7),
+  );
+  hatBand.position.set(0, 0.92, -0.05);
+  hatBand.rotation.set(-0.08, 0, 0.05);
+  head.add(hatBand);
+
+  // Cold morgue underlight + a faint ember glow at the eyes.
+  const faceLight = new THREE.PointLight(0x8fb8ff, 2.0, 3.4, 2);
+  faceLight.position.set(0, 5.4, 1.4);
+  torso.add(faceLight);
+  const emberLight = new THREE.PointLight(0xff3018, 0.9, 1.8, 2);
+  emberLight.position.set(0, 6.75, 0.95);
+  torso.add(emberLight);
+
+  // Long skeletal arms ending in bony fingers splayed on the table.
+  const restArm = buildSkeletalArm(suit, bone);
   restArm.position.set(0.7, 4.8, 0.4);
   restArm.rotation.x = -1.15;
   restArm.rotation.z = -0.2;
   torso.add(restArm);
 
-  const arm = buildArm(suit, flesh);
+  const arm = buildSkeletalArm(suit, bone);
   arm.position.set(-0.7, 4.8, 0.4);
   const armRestX = -1.15;
   arm.rotation.x = armRestX;
@@ -442,7 +579,48 @@ export function buildDealer(): FigureHandles {
 
   group.add(torso);
   castReceive(group, true, false);
-  return { group, torso, eyeMat, mouthMat, arm, armRestX };
+  return { group, torso, eyeMat, mouthMat, arm, armRestX, head };
+}
+
+/** A gaunt arm ending in a bony hand with long, splayed fingers. */
+function buildSkeletalArm(
+  coat: THREE.MeshStandardMaterial,
+  bone: THREE.MeshStandardMaterial,
+): THREE.Group {
+  const arm = new THREE.Group();
+  const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 1.5, 8), coat);
+  upper.position.y = -0.75;
+  arm.add(upper);
+  const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 1.3, 8), coat);
+  fore.position.set(0, -1.7, 0.35);
+  fore.rotation.x = -0.5;
+  arm.add(fore);
+  // Exposed bony wrist.
+  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.22, 8), bone);
+  wrist.position.set(0, -2.24, 0.62);
+  wrist.rotation.x = -0.6;
+  arm.add(wrist);
+  // Flat skeletal palm.
+  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.3), bone);
+  palm.position.set(0, -2.36, 0.76);
+  arm.add(palm);
+  // Four long fingers, splayed and slightly curled — plus a thumb.
+  for (let i = 0; i < 4; i++) {
+    const fx = -0.09 + i * 0.06;
+    const finger = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.016, 0.44, 6), bone);
+    finger.position.set(fx, -2.42, 0.98);
+    finger.rotation.x = -1.35;
+    finger.rotation.z = fx * 1.2;
+    arm.add(finger);
+    const knuckle = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 6), bone);
+    knuckle.position.set(fx, -2.38, 0.9);
+    arm.add(knuckle);
+  }
+  const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.018, 0.3, 6), bone);
+  thumb.position.set(0.16, -2.38, 0.8);
+  thumb.rotation.set(-1.1, 0, -0.9);
+  arm.add(thumb);
+  return arm;
 }
 
 /** The Player: a hunched hooded figure, dimmer eyes and a faint grin. */
@@ -533,35 +711,78 @@ export function buildPlayer(): FigureHandles {
  */
 export function buildPlayerHands(): THREE.Group {
   const group = new THREE.Group();
-  const flesh = matte(0x9a9590, 0.7); // Pale dead flesh
-  const sleeve = matte(0x111111, 0.9); // Dark grey/black sleeves
-  
-  const buildHand = (isLeft: boolean) => {
+  const flesh = matte(0x8f887c, 0.75); // pale, bloodless flesh
+  const fleshDark = matte(0x6e675c, 0.85); // grime in the creases
+  const sleeve = matte(0x14110e, 0.92); // ragged dark sleeves
+  const sleeveWorn = matte(0x241d16, 0.95);
+
+  const buildHand = (isLeft: boolean): THREE.Group => {
     const handGroup = new THREE.Group();
-    // Sleeve
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 1.8, 12), sleeve);
+    // Sleeve, with a frayed torn cuff of jutting cones.
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.4, 1.8, 12), sleeve);
     arm.rotation.x = Math.PI / 2;
     arm.position.set(0, 0.2, 0.9);
     handGroup.add(arm);
-    
-    // Hand
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.7), flesh);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + (isLeft ? 0.4 : 0.1);
+      const fray = new THREE.Mesh(
+        new THREE.ConeGeometry(0.05 + Math.random() * 0.03, 0.2 + Math.random() * 0.14, 4),
+        sleeveWorn,
+      );
+      fray.rotation.x = -Math.PI / 2;
+      fray.position.set(Math.cos(a) * 0.26, 0.2 + Math.sin(a) * 0.26, 0.05);
+      handGroup.add(fray);
+    }
+
+    // Bony hand with visible knuckle ridges.
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.18, 0.66), flesh);
     hand.position.set(0, 0, -0.2);
     handGroup.add(hand);
-    
-    // Fingers
-    for(let i=0; i<4; i++) {
-      const finger = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8), flesh);
-      finger.rotation.x = Math.PI / 2;
-      finger.position.set(-0.2 + i * 0.13, -0.05, -0.6);
-      handGroup.add(finger);
+    // Tendon ridges along the back of the hand.
+    for (let i = 0; i < 4; i++) {
+      const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.5), fleshDark);
+      ridge.position.set(-0.19 + i * 0.13, 0.1, -0.22);
+      handGroup.add(ridge);
     }
-    
+
+    // Fingers: two knuckle-bent segments each, resting on the felt.
+    for (let i = 0; i < 4; i++) {
+      const fx = -0.2 + i * 0.13;
+      const seg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.28, 8), flesh);
+      seg1.rotation.x = Math.PI / 2 - 0.15;
+      seg1.position.set(fx, -0.03, -0.62);
+      handGroup.add(seg1);
+      const knuckle = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), flesh);
+      knuckle.position.set(fx, -0.05, -0.76);
+      handGroup.add(knuckle);
+      const seg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.04, 0.22, 8), flesh);
+      seg2.rotation.x = Math.PI / 2 + 0.35;
+      seg2.position.set(fx, -0.1, -0.86);
+      handGroup.add(seg2);
+      // Dark cracked nail.
+      const nail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.07), fleshDark);
+      nail.position.set(fx, -0.06, -0.9);
+      nail.rotation.x = 0.35;
+      handGroup.add(nail);
+    }
+
+    // Thumb tucked along the inside edge.
+    const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.32, 8), flesh);
+    thumb.rotation.set(Math.PI / 2, 0, isLeft ? -0.7 : 0.7);
+    thumb.position.set(isLeft ? 0.32 : -0.32, -0.02, -0.35);
+    handGroup.add(thumb);
+
+    // An old scar gouged across the back of the hand.
+    const scar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.4), matte(0x5a2420, 0.8));
+    scar.position.set(isLeft ? 0.1 : -0.12, 0.1, -0.2);
+    scar.rotation.y = isLeft ? 0.5 : -0.5;
+    handGroup.add(scar);
+
     handGroup.position.set(isLeft ? -2.5 : 2.5, 3.4, 6.5);
     handGroup.rotation.y = isLeft ? 0.2 : -0.2;
     return handGroup;
-  }
-  
+  };
+
   group.add(buildHand(true));
   group.add(buildHand(false));
   castReceive(group, true, true);
@@ -614,9 +835,10 @@ export function buildRevolver(): RevolverHandles {
   // profile is drawn in the X-Z plane (length along Z, "up of the gun" along
   // +X) and is thin along Y, so it rests flat on the felt with no clipping.
   const group = new THREE.Group();
-  const silver = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.95, roughness: 0.2 });
-  const silverHi = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.9, roughness: 0.15 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, metalness: 0.05, roughness: 0.6 });
+  // Worn, oil-dark gunmetal — a weapon that has seen too much use.
+  const silver = new THREE.MeshStandardMaterial({ color: 0x565a63, metalness: 0.92, roughness: 0.42 });
+  const silverHi = new THREE.MeshStandardMaterial({ color: 0x7d818c, metalness: 0.88, roughness: 0.32 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x38220f, metalness: 0.05, roughness: 0.55 });
   const brass = metalMat(PAL.brass, 0.4);
 
   const T = 0.36; // thickness in Y (how thick the gun is as it lies on its side)
@@ -746,10 +968,30 @@ export function buildHpMarker(): HpMarker {
   dish.position.y = 0.03;
   group.add(dish);
 
-  // Wax column.
-  const wax = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.5, 12), waxMat);
+  // Wax column — leaning slightly, half-melted.
+  const wax = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.5, 12), waxMat);
   wax.position.y = 0.3;
+  wax.rotation.z = 0.05;
   group.add(wax);
+  // Drips of hardened wax running down the sides into the dish.
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.7;
+    const dripLen = 0.12 + Math.random() * 0.22;
+    const drip = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.032, dripLen, 6),
+      waxMat,
+    );
+    drip.position.set(Math.cos(a) * 0.12, 0.55 - dripLen / 2, Math.sin(a) * 0.12);
+    group.add(drip);
+    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), waxMat);
+    bead.position.set(Math.cos(a) * 0.13, 0.55 - dripLen, Math.sin(a) * 0.13);
+    group.add(bead);
+  }
+  // A pooled blob of wax in the dish.
+  const pool = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), waxMat);
+  pool.scale.set(1, 0.28, 1);
+  pool.position.y = 0.07;
+  group.add(pool);
 
   // Wick.
   const wick = new THREE.Mesh(

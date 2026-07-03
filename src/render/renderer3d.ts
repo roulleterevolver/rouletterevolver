@@ -222,6 +222,10 @@ export class Renderer3D implements IRenderer {
   // hideItemsUntil is unused
   private blinkEnd = 0;
   private nextBlink = 0;
+  // Dealer head twitch: a sudden, wrong-feeling snap of the head every so often.
+  private nextTwitchMs = 0;
+  private twitchStartMs = -1;
+  private twitchDir = 1;
   // Delayed candle extinguish so the flame blows out ON the candle camera cut.
   private shownHp: Record<"player" | "dealer", number> = { player: -1, dealer: -1 };
   private candleBlow:
@@ -405,7 +409,7 @@ export class Renderer3D implements IRenderer {
   private buildScene(): void {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(PAL.void);
-    scene.fog = new THREE.FogExp2(PAL.fog, 0.028);
+    scene.fog = new THREE.FogExp2(PAL.fog, 0.033);
 
     const camera = new THREE.PerspectiveCamera(45, this.width / this.height, 0.1, 100);
     camera.position.copy(this.camPos);
@@ -1844,9 +1848,37 @@ export class Renderer3D implements IRenderer {
       const b = Math.sin(t * 1.3);
       this.dealer.torso.rotation.x = b * 0.02 + this.flinch("AI");
       this.dealer.torso.position.y = b * 0.04;
-      const shimmer = 2.2 + Math.sin(t * 3) * 0.4;
+      const shimmer = 2.6 + Math.sin(t * 3) * 0.5 + Math.sin(t * 8.7) * 0.2;
       this.dealer.eyeMat.emissiveIntensity = shimmer;
       this.dealer.mouthMat.emissiveIntensity = 1.6 + Math.sin(t * 3 + 0.6) * 0.3;
+
+      // The head drifts through a slow, wrong-feeling tilt — and every few
+      // seconds it SNAPS sideways in a sudden twitch, eyes flaring.
+      if (this.dealer.head) {
+        const head = this.dealer.head;
+        let tilt = Math.sin(t * 0.33) * 0.09;
+        const nod = 0.06 + Math.sin(t * 0.21) * 0.05;
+        const nowMs = this.now();
+        if (this.nextTwitchMs === 0) this.nextTwitchMs = nowMs + 5000;
+        if (nowMs >= this.nextTwitchMs) {
+          this.twitchStartMs = nowMs;
+          this.nextTwitchMs = nowMs + 4500 + Math.random() * 8000;
+          this.twitchDir = Math.random() < 0.5 ? -1 : 1;
+        }
+        if (this.twitchStartMs >= 0) {
+          const tp = (nowMs - this.twitchStartMs) / 300;
+          if (tp >= 1) {
+            this.twitchStartMs = -1;
+          } else {
+            // Violent snap out, slow uneasy settle back.
+            const snap = tp < 0.2 ? tp / 0.2 : 1 - (tp - 0.2) / 0.8;
+            tilt += this.twitchDir * snap * 0.4;
+            this.dealer.eyeMat.emissiveIntensity = shimmer + snap * 3.0;
+          }
+        }
+        head.rotation.z = tilt;
+        head.rotation.x = nod;
+      }
     }
     if (this.player) {
       const b = Math.sin(t * 1.3 + 1.1);
@@ -1857,8 +1889,8 @@ export class Renderer3D implements IRenderer {
     // --- Eye + grin flare on shots/hits ----------------------------------
     const flare = this.fxProgress("eyeflare");
     if (flare !== null && this.dealer) {
-      const boost = (1 - flare) * 4.0;
-      this.dealer.eyeMat.emissiveIntensity = 2.2 + boost;
+      const boost = (1 - flare) * 5.0;
+      this.dealer.eyeMat.emissiveIntensity = 2.6 + boost;
       this.dealer.mouthMat.emissiveIntensity = 1.6 + boost;
     }
 
@@ -1958,10 +1990,16 @@ export class Renderer3D implements IRenderer {
       if (muzzle !== null) {
         this.revolver.flashMesh.visible = true;
         const k = 1 - muzzle;
-        this.revolver.flashMesh.scale.setScalar(0.8 + muzzle * 2.2);
+        // A violent, jittering bloom instead of a smooth swell.
+        const jitter = 1 + (Math.random() - 0.5) * 0.35;
+        this.revolver.flashMesh.scale.set(
+          (1.0 + muzzle * 3.0) * jitter,
+          (1.0 + muzzle * 3.0) / jitter,
+          1.0 + muzzle * 3.4,
+        );
         (this.revolver.flashMesh.material as THREE.MeshStandardMaterial).emissiveIntensity =
-          k * 6;
-        this.revolver.flash.intensity = k * 22;
+          k * 9;
+        this.revolver.flash.intensity = k * 45 * jitter;
       } else {
         this.revolver.flashMesh.visible = false;
         this.revolver.flash.intensity = 0;
